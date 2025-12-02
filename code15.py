@@ -1,24 +1,24 @@
 import streamlit as st
 import time
-import requests
-import base64
-import io
-import re
-import numpy as np
 
-# محاولة استيراد المكتبات مع التعامل مع الأخطاء
+# --- 1. فحص المكتبات ---
 try:
     from newspaper import Article
+    import requests
+    import base64
     import google.generativeai as genai
     from PIL import Image, ImageEnhance, ImageOps
+    import io
+    import re
+    import numpy as np
 except ImportError as e:
     st.error(f"❌ مكتبة ناقصة: {e}")
     st.stop()
 
-# --- 1. إعدادات الصفحة ---
+# --- 2. إعدادات الصفحة ---
 st.set_page_config(page_title="محرر الدريوش سيتي", layout="wide", page_icon="💎")
 
-# --- 2. القائمة الجانبية ---
+# --- 3. القائمة الجانبية ---
 with st.sidebar:
     st.header("1. البيانات")
     api_key = st.text_input("مفتاح Gemini API", type="password")
@@ -38,10 +38,11 @@ with st.sidebar:
     apply_mirror = st.checkbox("قلب الصورة", value=True)
     red_factor = st.slider("لمسة الأحمر", 0.0, 0.3, 0.08, step=0.01)
 
-# --- 3. الدوال ---
+# --- 4. الدوال ---
 
 def clean_garbage(text):
     if not text: return ""
+    # قائمة التنظيف
     junk = ["###SPLIT###", "###", "##", "**", "*", "العنوان:", "المتن:", "نص المقال:"]
     for j in junk:
         text = text.replace(j, "")
@@ -108,14 +109,10 @@ def ai_rewrite(txt, key, lang):
         **الدور:** رئيس تحرير محترف.
         **المهمة:** صياغة وترجمة النص إلى: {lang}.
 
-        **قواعد التعامل مع الحجم:**
-        1. **للنص القصير:** قم بتوسعته لمقال كامل (مقدمة، عرض، خاتمة).
-        2. **للنص الطويل:** حافظ على نفس الطول والتفاصيل دون اختصار.
-
-        **القواعد الصارمة:**
+        **القواعد:**
         1. **الفاصل:** ضع ###SPLIT### بين العنوان والنص.
-        2. **الأسلوب:** بشري، صحفي، خالي من الكليشيهات.
-        3. **العنوان:** سطر واحد جذاب بدون رموز.
+        2. **الطول:** لا تختصر النصوص الطويلة، ووسع النصوص القصيرة.
+        3. **الأسلوب:** صحفي بشري 100%.
 
         **النص:** {txt[:15000]}
         """
@@ -130,37 +127,9 @@ def wp_up_clean(ib, tit, con, url, usr, pwd):
     mid = 0
     if ib:
         h2 = head.copy()
-        h2.update({'Content-Disposition': 'attachment; filename=news.jpg', 'Content-Type': 'image/jpeg'})
+        h2.update({
+            'Content-Disposition': 'attachment; filename=news.jpg', 
+            'Content-Type': 'image/jpeg'
+        })
         try:
-            r = requests.post(f"{url}/wp-json/wp/v2/media", headers=h2, data=ib)
-            if r.status_code == 201: 
-                mid = r.json()['id']
-        except: 
-            pass
-    
-    h3 = head.copy()
-    h3['Content-Type'] = 'application/json'
-    d = {'title': tit, 'content': con, 'status': 'draft', 'featured_media': mid}
-    return requests.post(f"{url}/wp-json/wp/v2/posts", headers=h3, json=d)
-
-def wp_up_img(ib, url, usr, pwd):
-    cred = f"{usr}:{pwd}"
-    tok = base64.b64encode(cred.encode()).decode('utf-8')
-    head = {'Authorization': f'Basic {tok}'}
-    h2 = head.copy()
-    fn = f"img-{int(time.time())}.jpg"
-    h2.update({'Content-Disposition': f'attachment; filename={fn}', 'Content-Type': 'image/jpeg'})
-    return requests.post(f"{url}/wp-json/wp/v2/media", headers=h2, data=ib)
-
-# --- 4. الواجهة ---
-st.title("💎 محرر الدريوش سيتي")
-t1, t2, t3 = st.tabs(["🔗 رابط", "📝 يدوي", "🖼️ صورة"])
-mode, l_val, f_val, t_val, i_only = None, "", None, "", None
-
-with t1:
-    l_val = st.text_input("رابط الخبر:")
-    if st.button("🚀 تنفيذ (رابط)"): 
-        mode = "link"
-with t2:
-    f_val = st.file_uploader("الصورة", key="mi")
-    t_val = st.text_
+            r = requests.post(f"{url}/wp
