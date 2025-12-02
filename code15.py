@@ -11,7 +11,7 @@ import google.generativeai as genai
 import numpy as np
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="محرر الدريوش سيتي", layout="wide", page_icon="✅")
+st.set_page_config(page_title="محرر الدريوش سيتي - النهائي", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
@@ -31,7 +31,7 @@ with st.sidebar:
     apply_mirror = st.checkbox("قلب الصورة", value=True)
     red_factor = st.slider("لمسة الأحمر", 0.0, 0.3, 0.08)
 
-# --- 3. الدوال (تم إصلاح مشكلة الأسطر الطويلة هنا) ---
+# --- 3. الدوال ---
 
 def clean_txt(text):
     if not text: return ""
@@ -93,15 +93,20 @@ def ai_gen(txt):
         genai.configure(api_key=api_key)
         mod = genai.GenerativeModel('gemini-2.0-flash')
         
+        # --- التعليمات المحدثة لزيادة حجم الفقرات ومعايير السيو ---
         pmt = f"""
-        **الدور:** رئيس تحرير محترف. المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang}.
+        **الدور:** رئيس تحرير صحفي محترف وخبير في تحسين محركات البحث (SEO).
+        المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang} لإنتاج مقال إخباري جاهز للنشر.
         القواعد:
         1. الفاصل: ###SPLIT###
-        2. الهيكل: عنوان، مقدمة، جسم (4 فقرات على الأقل).
-        3. الحجم: حافظ على نفس كمية المعلومات.
-        4. الأسلوب: بشري، خالي من الكليشيهات.
+        2. الهيكل: عنوان، مقدمة قوية، جسم (لا يقل عن 5 فقرات)، وخاتمة.
+        3. الطول والأسلوب: يجب أن يكون طول المقال متوسطاً إلى كبيراً. يجب أن تتكون فقرات الجسم من 5 فقرات أو أكثر بمتوسط طول سطرين إلى 4 أسطر.
+        4. معايير السيو: طبق أفضل ممارسات السيو (SEO-friendly) عبر استخدام كلمات مفتاحية طبيعية ضمن السياق.
+        5. الأسلوب: بشري، خالي من الكليشيهات.
         النص: {txt[:20000]}
         """
+        # --- نهاية التحديث ---
+        
         return mod.generate_content(pmt).text
     except Exception as e: return f"Error: {e}"
 
@@ -111,7 +116,6 @@ def generate_filename():
     return f"driouchcity-{today_str}-{random_num}.jpg"
 
 def wp_send(ib, tit, con):
-    # بناء التوثيق
     cred = f"{wp_user}:{wp_password}"
     tok = base64.b64encode(cred.encode()).decode('utf-8')
     head = {'Authorization': f'Basic {tok}'}
@@ -122,19 +126,16 @@ def wp_send(ib, tit, con):
         h2 = head.copy()
         h2.update({'Content-Disposition': f'attachment; filename={filename}', 'Content-Type': 'image/jpeg'})
         try:
-            # FIX: بناء الرابط الآمن
             api_media = f"{wp_url}/wp-json/wp/v2/media"
             r = requests.post(api_media, headers=h2, data=ib)
             if r.status_code == 201: mid = r.json()['id']
         except: pass
     
-    # رفع المقال
     h3 = head.copy()
     h3['Content-Type'] = 'application/json'
     api_posts = f"{wp_url}/wp-json/wp/v2/posts"
     d = {'title': tit, 'content': con, 'status': 'draft', 'featured_media': mid}
     
-    # هنا تم التأكد من اكتمال سطر الطلب
     return requests.post(api_posts, headers=h3, json=d)
 
 def wp_img_only(ib):
@@ -144,26 +145,24 @@ def wp_img_only(ib):
     fn = generate_filename()
     h2 = head.copy()
     h2.update({'Content-Disposition': f'attachment; filename={fn}', 'Content-Type': 'image/jpeg'})
-    
-    # FIX: بناء الرابط الآمن
     api_media = f"{wp_url}/wp-json/wp/v2/media"
     return requests.post(api_media, headers=h2, data=ib)
 
 # --- 4. الواجهة ---
-st.title("💎 محرر الدريوش سيتي (V32)")
+st.title("💎 محرر الدريوش سيتي (V33)")
 t1, t2, t3 = st.tabs(["🔗 رابط", "📝 نص", "🖼️ صورة"])
 
 mode, l_val, f_val, t_val, i_only = None, "", None, "", None
 
 with t1:
-    l_val = st.text_input("رابط الخبر:")
+    l_val = st.text_input("رابط الخبر")
     if st.button("🚀 تنفيذ الرابط"): mode = "link"
 with t2:
-    f_val = st.file_uploader("الصورة", key="2")
+    f_val = st.file_uploader("صورة", key="2")
     t_val = st.text_area("النص", height=200)
     if st.button("🚀 تنفيذ النص"): mode = "manual"
 with t3:
-    ic = st.radio("المصدر:", ["ملف", "رابط"])
+    ic = st.radio("المصدر", ["ملف", "رابط"])
     if ic == "ملف": i_only = st.file_uploader("صورة", key="3")
     else: i_only = st.text_input("رابط")
     if st.button("🎨 رفع صورة فقط"): mode = "img"
@@ -209,7 +208,8 @@ if mode:
                     tit, bod = "", ""
                     if "###SPLIT###" in rai:
                         p = rai.split("###SPLIT###")
-                        tit, bod = p[0], p[1]
+                        # تم التأكد من اكتمال السطر هنا:
+                        tit, bod = p[0], p[1] 
                     else:
                         l = rai.split('\n')
                         tit, bod = l[0], "\n".join(l[1:])
