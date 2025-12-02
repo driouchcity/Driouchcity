@@ -11,11 +11,11 @@ import google.generativeai as genai
 import numpy as np
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="محرر الدريوش سيتي", layout="wide", page_icon="✅")
+st.set_page_config(page_title="محرر الدريوش سيتي - النهائي", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
-    st.header("1. البيانات")
+    st.header("⚙️ الإعدادات")
     api_key = st.text_input("مفتاح Gemini API", type="password")
     wp_url = st.text_input("رابط الموقع", "https://driouchcity.com")
     wp_user = st.text_input("اسم المستخدم")
@@ -111,6 +111,7 @@ def generate_filename():
     return f"driouchcity-{today_str}-{random_num}.jpg"
 
 def wp_send(ib, tit, con):
+    # Fix: استخدمنا متغيرات قصيرة لتفادي Syntax Error
     cred = f"{wp_user}:{wp_password}"
     tok = base64.b64encode(cred.encode()).decode('utf-8')
     head = {'Authorization': f'Basic {tok}'}
@@ -119,4 +120,6 @@ def wp_send(ib, tit, con):
     if ib:
         filename = generate_filename()
         h2 = head.copy()
-        h
+        h2.update({'Content-Disposition': f'attachment; filename={filename}', 'Content-Type': 'image/jpeg'})
+        try:
+            api_media = f"{wp_url}/
