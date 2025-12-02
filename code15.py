@@ -10,7 +10,7 @@ from newspaper import Article
 import google.generativeai as genai
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="Editor V27.0 - Final", layout="wide", page_icon="✅")
+st.set_page_config(page_title="Editor V27.1 - Final", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
@@ -85,7 +85,7 @@ def process_img(src, is_url):
         return buf.getvalue()
         
     except Exception as e:
-        return None # تم إصلاح مشكلة IndentationError هنا
+        return None
 
 def ai_gen(txt):
     try:
@@ -121,4 +121,5 @@ def wp_send(ib, tit, con):
         h2 = head.copy()
         h2.update({'Content-Disposition': f'attachment; filename={filename}', 'Content-Type': 'image/jpeg'})
         try:
-            r =
+            api_media = f"{wp_url}/wp-json/wp/v2/media"
+            r = requests.post(api_
