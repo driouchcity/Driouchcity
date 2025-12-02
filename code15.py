@@ -85,14 +85,14 @@ def process_img(src, is_url):
         return buf.getvalue()
         
     except Exception as e:
-        # هنا تم إضافة السطر المنسق المطلوب لتفادي الخطأ
-        return None
+        return None # تم إصلاح مشكلة IndentationError هنا
 
 def ai_gen(txt):
     try:
         genai.configure(api_key=api_key)
         mod = genai.GenerativeModel('gemini-2.0-flash')
         
+        # تعليمات المقال المطلوبة
         pmt = f"""
         الدور: صحفي محترف. المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang}.
         القواعد:
@@ -105,6 +105,11 @@ def ai_gen(txt):
         return mod.generate_content(pmt).text
     except Exception as e: return f"Error: {e}"
 
+def generate_filename():
+    today_str = datetime.datetime.now().strftime("%Y%m%d")
+    random_num = random.randint(1000, 9999)
+    return f"driouchcity-{today_str}-{random_num}.jpg"
+
 def wp_send(ib, tit, con):
     cred = f"{wp_user}:{wp_password}"
     tok = base64.b64encode(cred.encode()).decode('utf-8')
@@ -116,92 +121,4 @@ def wp_send(ib, tit, con):
         h2 = head.copy()
         h2.update({'Content-Disposition': f'attachment; filename={filename}', 'Content-Type': 'image/jpeg'})
         try:
-            r = requests.post(f"{wp_url}/wp-json/wp/v2/media", headers=h2, data=ib)
-            if r.status_code == 201: mid = r.json()['id']
-        except: pass
-    
-    h3 = head.copy()
-    h3['Content-Type'] = 'application/json'
-    d = {'title': tit, 'content': con, 'status': 'draft', 'featured_media': mid}
-    return requests.post(f"{wp_url}/wp-json/wp/v2/posts", headers=h3, json=d)
-
-def wp_img_only(ib):
-    cred = f"{wp_user}:{wp_password}"
-    tok = base64.b64encode(cred.encode()).decode('utf-8')
-    head = {'Authorization': f'Basic {tok}'}
-    fn = generate_filename()
-    h2 = head.copy()
-    h2.update({'Content-Disposition': f'attachment; filename={fn}', 'Content-Type': 'image/jpeg'})
-    return requests.post(f"{wp_url}/wp-json/wp/v2/media", headers=h2, data=ib)
-
-def generate_filename():
-    today_str = datetime.datetime.now().strftime("%Y%m%d")
-    random_num = random.randint(1000, 9999)
-    return f"driouchcity-{today_str}-{random_num}.jpg"
-
-# --- 4. الواجهة ---
-st.title("💎 محرر الدريوش سيتي (V27)")
-t1, t2, t3 = st.tabs(["🔗 رابط", "📝 نص", "🖼️ صورة"])
-
-mode, l_val, f_val, t_val, i_only = None, "", None, "", None
-
-with t1:
-    l_val = st.text_input("رابط الخبر")
-    if st.button("🚀 تنفيذ الرابط"): mode = "link"
-with t2:
-    f_val = st.file_uploader("صورة", key="2")
-    t_val = st.text_area("النص", height=200)
-    if st.button("🚀 تنفيذ النص"): mode = "manual"
-with t3:
-    ic = st.radio("المصدر", ["ملف", "رابط"])
-    if ic == "ملف": i_only = st.file_uploader("صورة", key="3")
-    else: i_only = st.text_input("رابط")
-    if st.button("🎨 رفع صورة فقط"): mode = "img"
-
-# --- 5. التنفيذ ---
-if mode:
-    if not api_key or not wp_password:
-        st.error("⚠️ أدخل البيانات!")
-    else:
-        st.divider()
-        # هنا يتم عرض شريط التقدم عند التشغيل
-        with st.spinner("جاري العمل..."):
-            tt, ti, iu = "", None, False
-            try:
-                if mode == "link":
-                    a = Article(l_val)
-                    a.download(); a.parse()
-                    tt, ti, iu = a.text, a.top_image, True
-                else:
-                    tt, ti = t_val, f_val
-                
-                fi = None
-                if ti:
-                    fi = process_img(ti, iu)
-                    if fi: st.image(fi, width=400)
-                
-                rai = ai_gen(tt)
-                if "Error" in rai: st.error(rai)
-                else:
-                    tit, bod = "", ""
-                    if "###SPLIT###" in rai:
-                        p = rai.split("###SPLIT###")
-                        tit, bod = p[0], p[1]
-                    else:
-                        l = rai.split('\n')
-                        tit, bod = l[0], "\n".join(l[1:])
-                    
-                    tit = clean_txt(tit)
-                    bod = clean_txt(bod)
-
-                    st.success(f"📌 {tit}")
-                    st.markdown(bod)
-                    
-                    r = wp_send(fi, tit, bod)
-                    if r.status_code == 201: 
-                        st.balloons()
-                        st.success(f"تم النشر! [رابط المعاينة]({r.json()['link']})")
-                    else: st.error(r.text)
-
-            except Exception as e:
-                st.error(f"Error: {e}")
+            r =
