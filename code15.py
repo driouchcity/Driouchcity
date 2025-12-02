@@ -11,7 +11,7 @@ import google.generativeai as genai
 import numpy as np
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="Editor V33.0 - Final", layout="wide", page_icon="✅")
+st.set_page_config(page_title="Editor V33.1 - Final", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
@@ -128,4 +128,14 @@ def wp_send(ib, tit, con):
     api_posts = f"{wp_url}/wp-json/wp/v2/posts"
     d = {'title': tit, 'content': con, 'status': 'draft', 'featured_media': mid}
     
-    return requests.post(api_posts
+    # هنا تم تقسيم السطر لضمان عدم حدوث SyntaxError
+    return requests.post(
+        api_posts, 
+        headers=h3, 
+        json=d
+    )
+
+def wp_img_only(ib):
+    cred = f"{wp_user}:{wp_password}"
+    tok = base64.b64encode(cred.encode()).decode('utf-8')
+    head = {'Authorization': f'
