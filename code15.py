@@ -11,7 +11,7 @@ import google.generativeai as genai
 import numpy as np
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="Editor V29.1 - Final", layout="wide", page_icon="✅")
+st.set_page_config(page_title="Editor V33.0 - Final", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
@@ -63,11 +63,3 @@ def process_img(src, is_url):
             img = Image.open(r.raw)
         else:
             img = Image.open(src)
-            
-        if img.mode != 'RGB': img = img.convert('RGB')
-        
-        if crop_logo:
-            w, h = img.size
-            img = img.crop((0, 0, w, int(h * (1 - logo_ratio))))
-            
-        if apply_mirror: img = ImageOps.mirror(img)
