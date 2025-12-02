@@ -91,4 +91,42 @@ def process_img(src, is_url):
 def ai_gen(txt):
     try:
         genai.configure(api_key=api_key)
-        mod = genai.Gener
+        # هذا السطر تم إصلاحه: ضمان كتابة اسم الدالة كاملاً
+        mod = genai.GenerativeModel('gemini-2.0-flash') 
+        
+        pmt = (f"**الدور:** رئيس تحرير محترف ونزيه. "
+               f"المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang}. "
+               "القواعد: 1. الفاصل: ###SPLIT### 2. الهيكل: عنوان، مقدمة، جسم (4 فقرات على الأقل). "
+               "3. الحجم: حافظ على نفس كمية المعلومات. 4. الأسلوب: بشري، خالي من الكليشيهات."
+               f"النص: {txt[:20000]}")
+
+        return mod.generate_content(pmt).text
+    except Exception as e: return f"Error: {e}"
+
+def generate_filename():
+    today_str = datetime.datetime.now().strftime("%Y%m%d")
+    random_num = random.randint(1000, 9999)
+    return f"driouchcity-{today_str}-{random_num}.jpg"
+
+def wp_send(ib, tit, con):
+    cred = f"{wp_user}:{wp_password}"
+    tok = base64.b64encode(cred.encode()).decode('utf-8')
+    head = {'Authorization': f'Basic {tok}'}
+    
+    mid = 0
+    if ib:
+        filename = generate_filename()
+        h2 = head.copy()
+        h2.update({'Content-Disposition': f'attachment; filename={filename}', 'Content-Type': 'image/jpeg'})
+        try:
+            api_media = f"{wp_url}/wp-json/wp/v2/media"
+            r = requests.post(api_media, headers=h2, data=ib)
+            if r.status_code == 201: mid = r.json()['id']
+        except: pass
+    
+    h3 = head.copy()
+    h3['Content-Type'] = 'application/json'
+    api_posts = f"{wp_url}/wp-json/wp/v2/posts"
+    d = {'title': tit, 'content': con, 'status': 'draft', 'featured_media': mid}
+    
+    return requests.post(api_posts, headers=h
