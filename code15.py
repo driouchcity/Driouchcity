@@ -1,287 +1,227 @@
 import streamlit as st
+import requests
 import base64
 import io
 import time
-import requests
+import random
+import datetime
 from PIL import Image, ImageEnhance, ImageOps
-from newspaper import Article # تأكد من تثبيت هذه المكتبة: pip install newspaper3k
+from newspaper import Article
 import google.generativeai as genai
+import numpy as np
 
-# 1. إعداد الصفحة فوراً لتجنب الشاشة البيضاء
-st.set_page_config(page_title="Editor Diagnostic and Article Refiner", layout="wide")
-st.title("🛠️ وضع التشخيص والإصلاح والتحسين الصحفي")
+# --- 1. إعدادات الصفحة ---
+st.set_page_config(page_title="محرر الدريوش سيتي - النهائي", layout="wide", page_icon="✅")
 
-# 2. فحص المكتبات واحدة تلو الأخرى
-missing_libs = []
-
-try:
-    import requests
-    st.success("✅ مكتبة Requests: موجودة")
-except ImportError:
-    missing_libs.append("requests")
-
-try:
-    from PIL import Image
-    st.success("✅ مكتبة Pillow (الصور): موجودة")
-except ImportError:
-    missing_libs.append("Pillow")
-
-try:
-    import google.generativeai as genai
-    st.success("✅ مكتبة Google AI: موجودة")
-except ImportError:
-    missing_libs.append("google-generativeai")
-
-try:
-    from newspaper import Article
-    st.success("✅ مكتبة Newspaper3k (الأخبار): موجودة")
-except ImportError:
-    # غالباً المشكلة هنا بسبب lxml
-    missing_libs.append("newspaper3k lxml_html_clean")
-
-# 3. عرض النتيجة
-if missing_libs:
-    st.error("❌ توقف التطبيق! المكتبات التالية مفقودة:")
-    st.code(f"pip install {' '.join(missing_libs)}")
-    st.warning("المرجو فتح الشاشة السوداء (CMD) وكتابة الأمر أعلاه لتثبيت النواقص.")
-    st.stop() # إيقاف التنفيذ هنا
-
-# ---------------------------------------------------------
-# إذا وصلت لهذا السطر، فالمكتبات سليمة وسيعمل التطبيق
-# ---------------------------------------------------------
-
-# --- القائمة الجانبية ---
+# --- 2. القائمة الجانبية ---
 with st.sidebar:
     st.header("⚙️ الإعدادات")
-    api_key = st.text_input("Gemini API", type="password")
+    api_key = st.text_input("مفتاح Gemini API", type="password")
     wp_url = st.text_input("رابط الموقع", "https://driouchcity.com")
     wp_user = st.text_input("اسم المستخدم")
     wp_password = st.text_input("كلمة المرور", type="password")
+    
     st.divider()
-    lang = st.selectbox("اللغة", ["العربية", "الإسبانية", "الفرنسية", "الإنجليزية"])
-    crop_logo = st.checkbox("قص اللوغو", True)
-    logo_r = st.slider("نسبة القص", 0.0, 0.25, 0.12)
-    mirror = st.checkbox("قلب الصورة", True)
-    red_val = st.slider("لمسة حمراء", 0.0, 0.3, 0.08)
+    langs = ["العربية", "الإسبانية", "الفرنسية", "الإنجليزية", "الهولندية", "الألمانية", "الإيطالية"]
+    target_lang = st.selectbox("اللغة:", langs)
+    
+    st.divider()
+    crop_logo = st.checkbox("قص اللوغو", value=True)
+    logo_ratio = st.slider("نسبة القص", 0.0, 0.25, 0.12)
+    apply_mirror = st.checkbox("قلب الصورة", value=True)
+    red_factor = st.slider("لمسة الأحمر", 0.0, 0.3, 0.08)
 
-# --- الدوال ---
-def proc_img(src, is_url):
-    """
-    معالجة وتحسين الصورة لتناسب مقاسات النشر الرقمي.
-    تتضمن: القص، القلب، تغيير الحجم، وتحسين الألوان والتباين.
-    """
+# --- 3. الدوال ---
+
+def clean_txt(text):
+    if not text: return ""
+    junk = ["###SPLIT###", "###", "##", "**", "*", "العنوان:", "المتن:", "نص المقال:"]
+    for x in junk:
+        text = text.replace(x, "")
+    return text.strip()
+
+def resize_768(img):
+    tw, th = 768, 432
+    cw, ch = img.size
+    tr, cr = tw / th, cw / ch
+    if cr > tr:
+        nh, nw = th, int(th * cr)
+        img = img.resize((nw, nh), Image.LANCZOS)
+        left = (nw - tw) // 2
+        img = img.crop((left, 0, left + tw, th))
+    else:
+        nw, nh = tw, int(nw / cr)
+        img = img.resize((nw, nh), Image.LANCZOS)
+        top = (nh - th) // 2
+        img = img.crop((0, top, tw, top + th))
+    return img
+
+def process_img(src, is_url):
     try:
         if is_url:
-            # يجب تعيين timeout لتجنب التعليق عند الروابط غير الصالحة
-            img = Image.open(requests.get(src, stream=True, timeout=10).raw)
+            r = requests.get(src, stream=True, timeout=10)
+            img = Image.open(r.raw)
         else:
             img = Image.open(src)
             
         if img.mode != 'RGB': img = img.convert('RGB')
         
-        # قص اللوغو من الأعلى
         if crop_logo:
             w, h = img.size
-            img = img.crop((0, 0, w, int(h * (1 - logo_r))))
+            img = img.crop((0, 0, w, int(h * (1 - logo_ratio))))
             
-        # قلب الصورة (Mirror)
-        if mirror: img = ImageOps.mirror(img)
+        if apply_mirror: img = ImageOps.mirror(img)
         
-        # تغيير الحجم والقص إلى نسبة 16:9 (768x432)
-        tw, th = 768, 432
-        img_ratio = img.width / img.height
-        target_ratio = tw / th
-        
-        if img_ratio > target_ratio:
-            new_h = th
-            new_w = int(new_h * img_ratio)
-            img = img.resize((new_w, new_h), Image.LANCZOS)
-            img = img.crop(((new_w-tw)//2, 0, (new_w-tw)//2 + tw, th))
-        else:
-            new_w = tw
-            new_h = int(new_w / img_ratio)
-            img = img.resize((new_w, new_h), Image.LANCZOS)
-            img = img.crop((0, (new_h-th)//2, tw, (new_h-th)//2 + th))
-
-        # تحسينات اللون والتباين
+        img = resize_768(img)
         img = ImageEnhance.Color(img).enhance(1.6)
         img = ImageEnhance.Contrast(img).enhance(1.15)
         img = ImageEnhance.Sharpness(img).enhance(1.3)
         
-        # إضافة لمسة حمراء خفيفة
-        if red_val > 0:
+        if red_factor > 0:
             ov = Image.new('RGB', img.size, (180, 20, 20))
-            img = Image.blend(img, ov, alpha=red_val)
+            img = Image.blend(img, ov, alpha=red_factor)
             
         buf = io.BytesIO()
         img.save(buf, format='JPEG', quality=95)
         return buf.getvalue()
+        
     except Exception as e:
-        st.error(f"خطأ في معالجة الصورة: {e}")
         return None
 
 def ai_gen(txt):
-    """
-    استخدام نموذج Gemini لتوليد المقال بالبرومبت الصحفي الجديد والمعدل.
-    """
     try:
         genai.configure(api_key=api_key)
+        mod = genai.GenerativeModel('gemini-2.0-flash')
         
-        # ----------------------------------------------------------------------
-        # تم تحديث البرومبت للحد بـ 5 فقرات فقط مع منع الحشو
-        # ----------------------------------------------------------------------
-        p = f"""
-        التعليمات: أنت صحفي استقصائي محترف وخبير في تحسين محركات البحث (SEO). مهمتك هي إعادة صياغة النص الأصلي المقدم بأسلوب صحفي حيوي ومقنع ومُحسّن للقراءة الرقمية.
-
-        1. العنوان (H1): يجب أن يكون العنوان في السطر الأول. قم بإنشاء عنوان رئيسي (H1) جديد وجذاب للغاية ومُحفّز للنقر (Clickbait-style) ويوافق معايير الـ SEO. يجب أن يتضمن العنوان كلمات مفتاحية ذات صلة بالموضوع الأصلي.
-        2. الفاصل: يجب أن يكون السطر الثاني هو ###SPLIT###.
-        3. المتن: يجب أن لا يقل المقال عن 500 كلمة، وأن يكون بأسلوب كتابة صحفي احترافي، بشري، وغير آلي المظهر. يجب هيكلة المقال لتحسين محركات البحث (SEO):
-           - استخدم فقرات متوسطة يسهل قراءتها.
-           - **يجب أن يتكون المقال من 5 فقرات فقط كحد أقصى. لا تتجاوز هذا العدد.**
-           - **يجب الالتزام الصارم بالمعلومات الأساسية الواردة في النص الأصلي فقط، وتجنب الإضافة أو الحشو غير المبرر.**
-           - دمج الكلمات المفتاحية ذات الصلة بشكل طبيعي في كامل النص.
-           - لا تستخدم أي عناوين فرعية (H2, H3) أو وسوم HTML داخل المتن.
-        4. اللغة المطلوبة: {lang}.
-        5. لا تحذف المعلومات الأساسية من النص الأصلي.
-
-        النص الأصلي للتحليل وإعادة الصياغة:
-        {txt[:20000]}
+        # --- التعليمات المحدثة: 5 فقرات متوسطة الحجم فقط ---
+        pmt = f"""
+        **الدور:** رئيس تحرير صحفي محترف.
+        المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang} لإنتاج مقال إخباري جاهز للنشر.
+        القواعد:
+        1. الفاصل: ###SPLIT###
+        2. الهيكل: يجب أن يكون المقال مكوناً من **عنوان وفقرة مقدمة و3 فقرات جسم وفقرة خاتمة** (المجموع 5 فقرات).
+        3. الطول والأسلوب: يجب أن تكون الفقرات **متوسطة الحجم** (2 إلى 4 أسطر لكل فقرة). يجب تجنب أي حشو أو تفاصيل مبالغ فيها أو نصائح.
+        4. الأسلوب: صحفي، بشري، وطبيعي تماماً.
+        النص: {txt[:20000]}
         """
-        # استخدام الطراز الموصى به حالياً
-        mod = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
+        # --- نهاية التحديث ---
         
-        response = mod.generate_content(p)
-        return response.text
-        
-    except Exception as e: 
-        return f"Error: {e}"
+        return mod.generate_content(pmt).text
+    except Exception as e: return f"Error: {e}"
+
+def generate_filename():
+    today_str = datetime.datetime.now().strftime("%Y%m%d")
+    random_num = random.randint(1000, 9999)
+    return f"driouchcity-{today_str}-{random_num}.jpg"
 
 def wp_send(ib, tit, con):
-    """
-    إرسال الصورة والمقال إلى ووردبريس عبر REST API.
-    تم إصلاح رأس (Header) رفع الصورة باستخدام طريقة multipart/form-data.
-    """
-    st.info("جاري إرسال المقال إلى ووردبريس...")
     cred = f"{wp_user}:{wp_password}"
     tok = base64.b64encode(cred.encode()).decode('utf-8')
     head = {'Authorization': f'Basic {tok}'}
-    mid = 0 # Media ID for featured image
     
-    # 1. رفع الصورة المميزة (Featured Image) - تم إصلاح مشكلة Content-Disposition/no_content_disposition
+    mid = 0
     if ib:
+        filename = generate_filename()
+        h2 = head.copy()
+        h2.update({'Content-Disposition': f'attachment; filename={filename}', 'Content-Type': 'image/jpeg'})
         try:
-            # استخدام io.BytesIO لتوفير الملف بشكل صحيح لـ requests
-            image_file = io.BytesIO(ib)
-            
-            # استخدام files لرفع الملف كـ multipart/form-data
-            files = {
-                'file': ('news_processed.jpg', image_file, 'image/jpeg')
-            }
-            
-            # لا حاجة لتعيين Content-Type في الرؤوس عند استخدام files
-            r = requests.post(f"{wp_url}/wp-json/wp/v2/media", headers=head, files=files, timeout=30)
-            
-            if r.status_code == 201: 
-                mid = r.json()['id']
-                st.success(f"✅ تم رفع الصورة بنجاح. Media ID: {mid}")
-            else: 
-                # عرض جزء من الرسالة لتسهيل التشخيص إذا استمر الخطأ
-                st.error(f"❌ فشل رفع الصورة: {r.status_code} - {r.text[:200]}")
-        except requests.exceptions.Timeout:
-            st.error("❌ فشل رفع الصورة: انتهت مهلة الاتصال بالخادم.")
-        except Exception as e: 
-            st.error(f"❌ خطأ غير متوقع أثناء رفع الصورة: {e}")
-            
-    # 2. إنشاء المقال (Post)
+            api_media = f"{wp_url}/wp-json/wp/v2/media"
+            r = requests.post(api_media, headers=h2, data=ib)
+            if r.status_code == 201: mid = r.json()['id']
+        except: pass
+    
     h3 = head.copy()
     h3['Content-Type'] = 'application/json'
-    d = {
-        'title': tit, 
-        'content': con, 
-        'status': 'draft', # النشر كمسودة (Draft)
-        'featured_media': mid # ربط الصورة
-    }
+    api_posts = f"{wp_url}/wp-json/wp/v2/posts"
+    d = {'title': tit, 'content': con, 'status': 'draft', 'featured_media': mid}
     
-    try:
-        r = requests.post(f"{wp_url}/wp-json/wp/v2/posts", headers=h3, json=d, timeout=30)
-        if r.status_code == 201: 
-            st.success(f"✅ تم النشر بنجاح! رابط المسودة: {r.json().get('link', 'لا يوجد رابط متاح')}")
-        else: 
-            st.error(f"❌ فشل نشر المقال: {r.status_code} - {r.text[:300]}")
-            st.code(d) # عرض البيانات المرسلة للمساعدة في التشخيص
-    except requests.exceptions.Timeout:
-        st.error("❌ فشل نشر المقال: انتهت مهلة الاتصال بالخادم.")
-    except Exception as e:
-        st.error(f"❌ خطأ غير متوقع أثناء نشر المقال: {e}")
+    return requests.post(api_posts, headers=h3, json=d)
 
+def wp_img_only(ib):
+    cred = f"{wp_user}:{wp_password}"
+    tok = base64.b64encode(cred.encode()).decode('utf-8')
+    head = {'Authorization': f'Basic {tok}'}
+    fn = generate_filename()
+    h2 = head.copy()
+    h2.update({'Content-Disposition': f'attachment; filename={fn}', 'Content-Type': 'image/jpeg'})
+    api_media = f"{wp_url}/wp-json/wp/v2/media"
+    return requests.post(api_media, headers=h2, data=ib)
 
-# --- الواجهة ---
-st.info("النظام يعمل بنجاح. اختر العملية:")
-t1, t2 = st.tabs(["🔗 رابط", "📝 يدوي"])
+# --- 4. الواجهة ---
+st.title("💎 محرر الدريوش سيتي (V34)")
+t1, t2, t3 = st.tabs(["🔗 رابط", "📝 نص", "🖼️ صورة"])
 
-mode, l_val, f_val, t_val = None, "", None, ""
+mode, l_val, f_val, t_val, i_only = None, "", None, "", None
 
 with t1:
-    l_val = st.text_input("الرابط")
+    l_val = st.text_input("رابط الخبر")
     if st.button("🚀 تنفيذ الرابط"): mode = "link"
 with t2:
-    f_val = st.file_uploader("صورة")
-    t_val = st.text_area("نص")
-    if st.button("🚀 تنفيذ اليدوي"): mode = "manual"
+    f_val = st.file_uploader("صورة", key="2")
+    t_val = st.text_area("النص", height=200)
+    if st.button("🚀 تنفيذ النص"): mode = "manual"
+with t3:
+    ic = st.radio("المصدر", ["ملف", "رابط"])
+    if ic == "ملف": i_only = st.file_uploader("صورة", key="3")
+    else: i_only = st.text_input("رابط")
+    if st.button("🎨 رفع صورة فقط"): mode = "img"
 
+# --- 5. التنفيذ ---
 if mode:
-    if not api_key: st.error("أدخل المفتاح!")
+    if not api_key or not wp_password:
+        st.error("⚠️ أدخل البيانات!")
     else:
+        st.divider()
         with st.spinner("جاري العمل..."):
             tt, ti, iu = "", None, False
             try:
                 if mode == "link":
-                    if not l_val: raise ValueError("الرجاء إدخال رابط صالح.")
                     a = Article(l_val)
                     a.download(); a.parse()
                     tt, ti, iu = a.text, a.top_image, True
-                    st.info("✅ تم تحليل الرابط بنجاح.")
-                else:
-                    if not t_val: raise ValueError("الرجاء إدخال نص المقال.")
+                elif mode == "manual":
                     tt, ti = t_val, f_val
-                    st.info("✅ تم استلام النص والصورة يدوياً.")
-                    
-                # 1. معالجة الصورة
+                
+                # مسار الصورة فقط
+                if mode == "img":
+                    if not i_only: st.error("لا توجد صورة")
+                    else:
+                        iu = isinstance(i_only, str)
+                        fi = process_img(i_only, iu)
+                        if fi:
+                            st.image(fi, width=400)
+                            r = wp_img_only(fi)
+                            if r.status_code == 201: st.success(f"تم الرفع! {r.json()['source_url']}")
+                            else: st.error(r.text)
+                    st.stop() 
+
+                # معالجة الصورة والمقال للمسار link/manual
                 fi = None
                 if ti:
-                    st.info("جاري معالجة الصورة...")
-                    fi = proc_img(ti, iu)
-                    if fi: 
-                        st.image(fi, caption="الصورة المميزة بعد المعالجة", width=400)
-                        st.success("✅ تم معالجة الصورة بنجاح.")
-                    else:
-                        st.warning("⚠️ لم يتم العثور على صورة أو فشلت المعالجة.")
-
-                # 2. توليد المقال بواسطة الذكاء الاصطناعي
-                st.info("جاري توليد وإعادة صياغة المقال بأسلوب صحفي...")
-                rai = ai_gen(tt)
+                    fi = process_img(ti, iu)
+                    if fi: st.image(fi, width=400)
                 
-                if "Error" in rai: 
-                    st.error(rai)
+                rai = ai_gen(tt)
+                if "Error" in rai: st.error(rai)
                 else:
-                    # تقسيم العنوان عن المتن باستخدام الفاصل الجديد
-                    parts = rai.split("###SPLIT###", 1) 
-                    tit = parts[0].strip()
-                    bod = parts[1].strip() if len(parts) > 1 else ""
-                    
-                    st.subheader("🎉 المقال جاهز للنشر")
-                    st.success(f"العنوان (H1): {tit}")
-                    st.markdown("---")
-                    st.markdown("المتن:")
-                    # تم إزالة unsafe_allow_html=True
-                    st.markdown(bod) 
-                    st.markdown("---")
-                    
-                    # 3. إرسال إلى ووردبريس
-                    if wp_url and wp_user and wp_password:
-                        wp_send(fi, tit, bod)
+                    tit, bod = "", ""
+                    if "###SPLIT###" in rai:
+                        p = rai.split("###SPLIT###")
+                        tit, bod = p[0], p[1]
                     else:
-                        st.warning("⚠️ لم يتم إدخال بيانات ووردبريس (الرابط، المستخدم، كلمة المرور). لن يتم النشر تلقائياً.")
+                        l = rai.split('\n')
+                        tit, bod = l[0], "\n".join(l[1:])
+                    
+                    tit = clean_txt(tit)
+                    bod = clean_txt(bod)
 
-            except Exception as e: 
-                st.error(f"❌ حدث خطأ عام أثناء التنفيذ: {e}")
+                    st.success(f"📌 {tit}")
+                    st.markdown(bod)
+                    
+                    r = wp_send(fi, tit, bod)
+                    if r.status_code == 201: 
+                        st.balloons()
+                        st.success(f"تم النشر! [رابط المعاينة]({r.json()['link']})")
+                    else: st.error(r.text)
+            except Exception as e:
+                st.error(f"Error: {e}")
