@@ -10,7 +10,7 @@ from newspaper import Article
 import google.generativeai as genai
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="Editor V27.1 - Final", layout="wide", page_icon="✅")
+st.set_page_config(page_title="Editor V28.0 - Final", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
@@ -30,7 +30,7 @@ with st.sidebar:
     apply_mirror = st.checkbox("قلب الصورة", value=True)
     red_factor = st.slider("لمسة الأحمر", 0.0, 0.3, 0.08)
 
-# --- 3. الدوال ---
+# --- 3. الدوال (تم تقسيم الأسطر الطويلة) ---
 
 def clean_txt(text):
     if not text: return ""
@@ -92,7 +92,6 @@ def ai_gen(txt):
         genai.configure(api_key=api_key)
         mod = genai.GenerativeModel('gemini-2.0-flash')
         
-        # تعليمات المقال المطلوبة
         pmt = f"""
         الدور: صحفي محترف. المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang}.
         القواعد:
@@ -122,4 +121,41 @@ def wp_send(ib, tit, con):
         h2.update({'Content-Disposition': f'attachment; filename={filename}', 'Content-Type': 'image/jpeg'})
         try:
             api_media = f"{wp_url}/wp-json/wp/v2/media"
-            r = requests.post(api_
+            r = requests.post(api_media, headers=h2, data=ib)
+            if r.status_code == 201: mid = r.json()['id']
+        except: pass
+    
+    h3 = head.copy()
+    h3['Content-Type'] = 'application/json'
+    api_posts = f"{wp_url}/wp-json/wp/v2/posts"
+    d = {'title': tit, 'content': con, 'status': 'draft', 'featured_media': mid}
+    
+    # هنا تم تقسيم السطر لضمان عدم حدوث SyntaxError
+    return requests.post(
+        api_posts, 
+        headers=h3, 
+        json=d
+    )
+
+def wp_img_only(ib):
+    cred = f"{wp_user}:{wp_password}"
+    tok = base64.b64encode(cred.encode()).decode('utf-8')
+    head = {'Authorization': f'Basic {tok}'}
+    fn = generate_filename()
+    h2 = head.copy()
+    h2.update({'Content-Disposition': f'attachment; filename={fn}', 'Content-Type': 'image/jpeg'})
+    return requests.post(f"{wp_url}/wp-json/wp/v2/media", headers=h2, data=ib)
+
+# --- 4. الواجهة ---
+st.title("💎 محرر الدريوش سيتي (V28)")
+t1, t2, t3 = st.tabs(["🔗 رابط", "📝 نص", "🖼️ صورة"])
+
+mode, l_val, f_val, t_val, i_only = None, "", None, "", None
+
+with t1:
+    l_val = st.text_input("رابط الخبر")
+    if st.button("🚀 تنفيذ الرابط"): mode = "link"
+with t2:
+    f_val = st.file_uploader("صورة", key="2")
+    t_val = st.text_area("النص", height=200)
+    if st
