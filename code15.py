@@ -11,7 +11,7 @@ import google.generativeai as genai
 import numpy as np
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="Editor V33.2 - Final", layout="wide", page_icon="✅")
+st.set_page_config(page_title="Editor V34.0 - Final", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
@@ -91,8 +91,7 @@ def process_img(src, is_url):
 def ai_gen(txt):
     try:
         genai.configure(api_key=api_key)
-        # هذا السطر تم إصلاحه: ضمان كتابة اسم الدالة كاملاً
-        mod = genai.GenerativeModel('gemini-2.0-flash') 
+        mod = genai.GenerativeModel('gemini-2.0-flash')
         
         pmt = (f"**الدور:** رئيس تحرير محترف ونزيه. "
                f"المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang}. "
@@ -115,18 +114,4 @@ def wp_send(ib, tit, con):
     
     mid = 0
     if ib:
-        filename = generate_filename()
-        h2 = head.copy()
-        h2.update({'Content-Disposition': f'attachment; filename={filename}', 'Content-Type': 'image/jpeg'})
-        try:
-            api_media = f"{wp_url}/wp-json/wp/v2/media"
-            r = requests.post(api_media, headers=h2, data=ib)
-            if r.status_code == 201: mid = r.json()['id']
-        except: pass
-    
-    h3 = head.copy()
-    h3['Content-Type'] = 'application/json'
-    api_posts = f"{wp_url}/wp-json/wp/v2/posts"
-    d = {'title': tit, 'content': con, 'status': 'draft', 'featured_media': mid}
-    
-    return requests.post(api_posts, headers=h
+        filename = generate_
