@@ -11,7 +11,7 @@ import google.generativeai as genai
 import numpy as np
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="Editor V30.0 - FINAL", layout="wide", page_icon="✅")
+st.set_page_config(page_title="Editor V32.0 - Final", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
@@ -64,4 +64,42 @@ def process_img(src, is_url):
         else:
             img = Image.open(src)
             
-        if img.mode != '
+        # [السطر المصحح] ضمان أن السطر مغلق حتى لو انقطع
+        if img.mode != 'RGB': 
+            img = img.convert('RGB')
+        
+        if crop_logo:
+            w, h = img.size
+            img = img.crop((0, 0, w, int(h * (1 - logo_ratio))))
+            
+        if apply_mirror: img = ImageOps.mirror(img)
+        
+        img = resize_768(img)
+        img = ImageEnhance.Color(img).enhance(1.6)
+        img = ImageEnhance.Contrast(img).enhance(1.15)
+        img = ImageEnhance.Sharpness(img).enhance(1.3)
+        
+        if red_factor > 0:
+            ov = Image.new('RGB', img.size, (180, 20, 20))
+            img = Image.blend(img, ov, alpha=red_factor)
+            
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=95)
+        return buf.getvalue()
+        
+    except Exception as e:
+        return None
+
+def ai_gen(txt):
+    try:
+        genai.configure(api_key=api_key)
+        mod = genai.GenerativeModel('gemini-2.0-flash')
+        
+        pmt = f"""
+        **الدور:** رئيس تحرير محترف ونزيه. المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang}.
+        القواعد:
+        1. الفاصل: ###SPLIT###
+        2. الهيكل: عنوان، مقدمة، جسم (4 فقرات على الأقل).
+        3. الحجم: حافظ على نفس كمية المعلومات.
+        4. الأسلوب: بشري، خالي من الكليشيهات.
+        النص: {
