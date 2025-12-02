@@ -42,7 +42,6 @@ with st.sidebar:
 
 def clean_garbage(text):
     if not text: return ""
-    # قائمة التنظيف
     junk = ["###SPLIT###", "###", "##", "**", "*", "العنوان:", "المتن:", "نص المقال:"]
     for j in junk:
         text = text.replace(j, "")
@@ -79,7 +78,8 @@ def process_img(src, is_url, crop, c_amt, mirror, red):
         
         if crop:
             w, h = img.size
-            img = img.crop((0, 0, w, int(h * (1 - c_amt))))
+            cut_h = int(h * (1 - c_amt))
+            img = img.crop((0, 0, w, cut_h))
             
         if mirror: 
             img = ImageOps.mirror(img)
@@ -109,10 +109,14 @@ def ai_rewrite(txt, key, lang):
         **الدور:** رئيس تحرير محترف.
         **المهمة:** صياغة وترجمة النص إلى: {lang}.
 
-        **القواعد:**
+        **قواعد التعامل مع الحجم:**
+        1. **للنص القصير:** قم بتوسعته لمقال كامل.
+        2. **للنص الطويل:** حافظ على نفس الطول والتفاصيل.
+
+        **القواعد الصارمة:**
         1. **الفاصل:** ضع ###SPLIT### بين العنوان والنص.
-        2. **الطول:** لا تختصر النصوص الطويلة، ووسع النصوص القصيرة.
-        3. **الأسلوب:** صحفي بشري 100%.
+        2. **الأسلوب:** بشري، صحفي، خالي من الكليشيهات.
+        3. **العنوان:** سطر واحد جذاب بدون رموز.
 
         **النص:** {txt[:15000]}
         """
@@ -121,15 +125,5 @@ def ai_rewrite(txt, key, lang):
         return f"Error: {e}"
 
 def wp_up_clean(ib, tit, con, url, usr, pwd):
+    # بناء التوثيق
     cred = f"{usr}:{pwd}"
-    tok = base64.b64encode(cred.encode()).decode('utf-8')
-    head = {'Authorization': f'Basic {tok}'}
-    mid = 0
-    if ib:
-        h2 = head.copy()
-        h2.update({
-            'Content-Disposition': 'attachment; filename=news.jpg', 
-            'Content-Type': 'image/jpeg'
-        })
-        try:
-            r = requests.post(f"{url}/wp
