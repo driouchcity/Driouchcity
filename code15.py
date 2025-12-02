@@ -11,7 +11,7 @@ import google.generativeai as genai
 import numpy as np
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="Editor V36.0 - Final", layout="wide", page_icon="✅")
+st.set_page_config(page_title="Editor V28.0 - Final Structure", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
@@ -34,10 +34,13 @@ with st.sidebar:
 # --- 3. الدوال ---
 
 def clean_txt(text):
+    # التنظيف من الرموز والكلمات الداخلية
     if not text: return ""
     junk = ["###SPLIT###", "###", "##", "**", "*", "العنوان:", "المتن:", "نص المقال:"]
     for x in junk:
         text = text.replace(x, "")
+    # حذف الترقيم الآلي الزائد الذي سيضعه النموذج
+    text = re.sub(r'^\d+\.\s*', '', text, flags=re.MULTILINE)
     return text.strip()
 
 def resize_768(img):
@@ -93,23 +96,40 @@ def ai_gen(txt):
         genai.configure(api_key=api_key)
         mod = genai.GenerativeModel('gemini-2.0-flash')
         
-        # --- البرومبت النهائي ---
+        # --- التعليمات النهائية: إجبار الترقيم والفصل ---
         pmt = f"""
-        **الدور:** صحفي محترف ونزيه.
-        المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang} لإنتاج مقال إخباري جاهز للنشر.
-        القواعد:
-        1. الفاصل: ###SPLIT###
-        2. الهيكل: عنوان، فقرة مقدمة، 3 فقرات جسم، وفقرة خاتمة (المجموع 5 فقرات).
-        3. الطول والأسلوب: يجب أن تكون الفقرات قصيرة إلى متوسطة الحجم (لا تتجاوز 3 أسطر لكل فقرة). يجب أن يكون الأسلوب محايداً، صحفياً بحتاً، خالياً تماماً من أي مبالغة، حشو، أو تعابير رأي شخصية.
-        النص: {txt[:20000]}
-        """
-        return mod.generate_content(pmt).text
-    except Exception as e: return f"Error: {e}"
+        **الدور:** صحفي محترف ونزيه. أسلوب بشري وطبيعي.
+        المهمة: كتابة تقرير صحفي شامل باللغة {target_lang} بناءً على النص أدناه.
 
-def generate_filename():
-    today_str = datetime.datetime.now().strftime("%Y%m%d")
-    random_num = random.randint(1000, 9999)
-    return f"driouchcity-{today_str}-{random_num}.jpg"
+        **القواعد الصارمة:**
+        1. **الهيكل:** يجب أن يتكون المقال من 5 فقرات محددة.
+        2. **الترقيم (مهم جداً):** قم بترقيم الفقرات من 1 إلى 5.
+        3. **الفاصل:** ضع ###SPLIT### بين العنوان وبداية الفقرة الأولى.
+        4. **الطول:** فقرات متوسطة الحجم (3-4 أسطر). لا حشو أو مبالغة.
+
+        **النص:** {txt[:20000]}
+        """
+        raw_output = mod.generate_content(pmt).text
+        
+        # معالجة الناتج: حذف الترقيم والفاصل
+        if "###SPLIT###" in raw_output:
+            title_part, body_part = raw_output.split("###SPLIT###", 1)
+        else:
+            title_part, body_part = raw_output.split('\n', 1)
+        
+        # تنظيف الفقرات من الأرقام وإضافة فاصل بصري
+        body_cleaned = re.sub(r'^\s*\d+\.\s*', '', body_part, flags=re.MULTILINE)
+        
+        # إعادة تقسيم النص بفاصل سطرين لضمان ظهور الفقرات
+        body_paragraphs = body_cleaned.split('\n')
+        
+        # تصفية الفراغات والسطور القصيرة جداً
+        final_body = "\n\n".join([p.strip() for p in body_paragraphs if len(p.strip()) > 10])
+        
+        # إرجاع النتيجة النهائية
+        return f"{title_part}\n###SPLIT###\n{final_body}"
+        
+    except Exception as e: return f"Error: {e}"
 
 def wp_send(ib, tit, con):
     cred = f"{wp_user}:{wp_password}"
@@ -122,25 +142,21 @@ def wp_send(ib, tit, con):
         h2 = head.copy()
         h2.update({'Content-Disposition': f'attachment; filename={filename}', 'Content-Type': 'image/jpeg'})
         try:
-            api_media = f"{wp_url}/wp-json/wp/v2/media"
-            r = requests.post(api_media, headers=h2, data=ib)
+            r = requests.post(f"{wp_url}/wp-json/wp/v2/media", headers=h2, data=ib)
             if r.status_code == 201: mid = r.json()['id']
         except: pass
     
     h3 = head.copy()
     h3['Content-Type'] = 'application/json'
-    api_posts = f"{wp_url}/wp-json/wp/v2/posts"
-    
-    # هنا تم إصلاح مشكلة السطر الطويل
-    d = {
-        'title': tit, 
-        'content': con, 
-        'status': 'draft', 
-        'featured_media': mid
-    }
-    
-    return requests.post(api_posts, headers=h3, json=d)
+    d = {'title': tit, 'content': con, 'status': 'draft', 'featured_media': mid}
+    return requests.post(f"{wp_url}/wp-json/wp/v2/posts", headers=h3, json=d)
 
+def generate_filename():
+    today_str = datetime.datetime.now().strftime("%Y%m%d")
+    random_num = random.randint(1000, 9999)
+    return f"driouchcity-{today_str}-{random_num}.jpg"
+
+# دالة رفع الصورة فقط (للتذييل)
 def wp_img_only(ib):
     cred = f"{wp_user}:{wp_password}"
     tok = base64.b64encode(cred.encode()).decode('utf-8')
@@ -148,11 +164,10 @@ def wp_img_only(ib):
     fn = generate_filename()
     h2 = head.copy()
     h2.update({'Content-Disposition': f'attachment; filename={fn}', 'Content-Type': 'image/jpeg'})
-    api_media = f"{wp_url}/wp-json/wp/v2/media"
-    return requests.post(api_media, headers=h2, data=ib)
+    return requests.post(f"{wp_url}/wp-json/wp/v2/media", headers=h2, data=ib)
 
 # --- 4. الواجهة ---
-st.title("💎 محرر الدريوش سيتي (V36)")
+st.title("💎 محرر الدريوش سيتي (V28)")
 t1, t2, t3 = st.tabs(["🔗 رابط", "📝 نص", "🖼️ صورة"])
 
 mode, l_val, f_val, t_val, i_only = None, "", None, "", None
@@ -162,10 +177,10 @@ with t1:
     if st.button("🚀 تنفيذ الرابط"): mode = "link"
 with t2:
     f_val = st.file_uploader("صورة", key="2")
-    t_val = st.text_area("نص", height=200)
+    t_val = st.text_area("النص", height=200)
     if st.button("🚀 تنفيذ النص"): mode = "manual"
 with t3:
-    ic = st.radio("المصدر", ["ملف", "رابط"])
+    ic = st.radio("المصدر", ["ملف", "رابط"], horizontal=True)
     if ic == "ملف": i_only = st.file_uploader("صورة", key="3")
     else: i_only = st.text_input("رابط")
     if st.button("🎨 رفع صورة فقط"): mode = "img"
@@ -186,46 +201,10 @@ if mode:
                 elif mode == "manual":
                     tt, ti = t_val, f_val
                 
-                # مسار الصورة فقط
+                # مسار الصورة فقط (تم حذفه من التتبع لأنه مسار فرعي لا يتأثر بالخطأ)
                 if mode == "img":
                     if not i_only: st.error("لا توجد صورة")
                     else:
                         iu = isinstance(i_only, str)
                         fi = process_img(i_only, iu)
                         if fi:
-                            st.image(fi, width=400)
-                            r = wp_img_only(fi)
-                            if r.status_code == 201: st.success(f"تم الرفع! {r.json()['source_url']}")
-                            else: st.error(r.text)
-                    st.stop() 
-
-                # معالجة الصورة والمقال للمسار link/manual
-                fi = None
-                if ti:
-                    fi = process_img(ti, iu)
-                    if fi: st.image(fi, width=400)
-                
-                rai = ai_gen(tt)
-                if "Error" in rai: st.error(rai)
-                else:
-                    tit, bod = "", ""
-                    if "###SPLIT###" in rai:
-                        p = rai.split("###SPLIT###")
-                        tit, bod = p[0], p[1]
-                    else:
-                        l = rai.split('\n')
-                        tit, bod = l[0], "\n".join(l[1:])
-                    
-                    tit = clean_txt(tit)
-                    bod = clean_txt(bod)
-
-                    st.success(f"📌 {tit}")
-                    st.markdown(bod)
-                    
-                    r = wp_send(fi, tit, bod)
-                    if r.status_code == 201: 
-                        st.balloons()
-                        st.success(f"تم النشر! [رابط المعاينة]({r.json()['link']})")
-                    else: st.error(r.text)
-            except Exception as e:
-                st.error(f"Error: {e}")
