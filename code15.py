@@ -64,9 +64,7 @@ def process_img(src, is_url):
         else:
             img = Image.open(src)
             
-        # [السطر المصحح] ضمان أن السطر مغلق حتى لو انقطع
-        if img.mode != 'RGB': 
-            img = img.convert('RGB')
+        if img.mode != 'RGB': img = img.convert('RGB')
         
         if crop_logo:
             w, h = img.size
@@ -96,10 +94,8 @@ def ai_gen(txt):
         mod = genai.GenerativeModel('gemini-2.0-flash')
         
         pmt = f"""
-        **الدور:** رئيس تحرير محترف ونزيه. المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang}.
+        **الدور:** صحفي محترف ونزيه. المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang}.
         القواعد:
         1. الفاصل: ###SPLIT###
         2. الهيكل: عنوان، مقدمة، جسم (4 فقرات على الأقل).
-        3. الحجم: حافظ على نفس كمية المعلومات.
-        4. الأسلوب: بشري، خالي من الكليشيهات.
-        النص: {
+        3.
