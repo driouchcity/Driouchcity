@@ -128,7 +128,7 @@ def ai_gen(txt):
         genai.configure(api_key=api_key)
         
         # ----------------------------------------------------------------------
-        # تم تحديث البرومبت لإزالة العناوين الفرعية ومنع الحشو
+        # تم تحديث البرومبت للحد بـ 5 فقرات فقط مع منع الحشو
         # ----------------------------------------------------------------------
         p = f"""
         التعليمات: أنت صحفي استقصائي محترف وخبير في تحسين محركات البحث (SEO). مهمتك هي إعادة صياغة النص الأصلي المقدم بأسلوب صحفي حيوي ومقنع ومُحسّن للقراءة الرقمية.
@@ -137,10 +137,10 @@ def ai_gen(txt):
         2. الفاصل: يجب أن يكون السطر الثاني هو ###SPLIT###.
         3. المتن: يجب أن لا يقل المقال عن 500 كلمة، وأن يكون بأسلوب كتابة صحفي احترافي، بشري، وغير آلي المظهر. يجب هيكلة المقال لتحسين محركات البحث (SEO):
            - استخدم فقرات متوسطة يسهل قراءتها.
-           - يجب أن يتراوح عدد الفقرات ما بين 5 إلى 15 فقرة كحد أقصى.
+           - **يجب أن يتكون المقال من 5 فقرات فقط كحد أقصى. لا تتجاوز هذا العدد.**
            - **يجب الالتزام الصارم بالمعلومات الأساسية الواردة في النص الأصلي فقط، وتجنب الإضافة أو الحشو غير المبرر.**
            - دمج الكلمات المفتاحية ذات الصلة بشكل طبيعي في كامل النص.
-           - **لا تستخدم أي عناوين فرعية (H2, H3) أو وسوم HTML داخل المتن.**
+           - لا تستخدم أي عناوين فرعية (H2, H3) أو وسوم HTML داخل المتن.
         4. اللغة المطلوبة: {lang}.
         5. لا تحذف المعلومات الأساسية من النص الأصلي.
 
@@ -159,7 +159,7 @@ def ai_gen(txt):
 def wp_send(ib, tit, con):
     """
     إرسال الصورة والمقال إلى ووردبريس عبر REST API.
-    تم تعديل رأس (Header) رفع الصورة لمعالجة خطأ 400.
+    تم إصلاح رأس (Header) رفع الصورة باستخدام طريقة multipart/form-data.
     """
     st.info("جاري إرسال المقال إلى ووردبريس...")
     cred = f"{wp_user}:{wp_password}"
@@ -167,17 +167,20 @@ def wp_send(ib, tit, con):
     head = {'Authorization': f'Basic {tok}'}
     mid = 0 # Media ID for featured image
     
-    # 1. رفع الصورة المميزة (Featured Image) - تم إصلاح مشكلة Content-Disposition هنا
+    # 1. رفع الصورة المميزة (Featured Image) - تم إصلاح مشكلة Content-Disposition/no_content_disposition
     if ib:
-        h2 = head.copy()
-        # استخدام X-WP-Attachment-Filename وهو الأكثر موثوقية لتحديد اسم الملف في ووردبريس
-        h2.update({
-            'Content-Type': 'image/jpeg',
-            'X-WP-Attachment-Filename': 'news_processed.jpg'
-        })
         try:
-            # يجب تحديد الرابط الصحيح لنقطة نهاية الـ Media
-            r = requests.post(f"{wp_url}/wp-json/wp/v2/media", headers=h2, data=ib, timeout=30)
+            # استخدام io.BytesIO لتوفير الملف بشكل صحيح لـ requests
+            image_file = io.BytesIO(ib)
+            
+            # استخدام files لرفع الملف كـ multipart/form-data
+            files = {
+                'file': ('news_processed.jpg', image_file, 'image/jpeg')
+            }
+            
+            # لا حاجة لتعيين Content-Type في الرؤوس عند استخدام files
+            r = requests.post(f"{wp_url}/wp-json/wp/v2/media", headers=head, files=files, timeout=30)
+            
             if r.status_code == 201: 
                 mid = r.json()['id']
                 st.success(f"✅ تم رفع الصورة بنجاح. Media ID: {mid}")
