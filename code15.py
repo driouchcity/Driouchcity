@@ -11,7 +11,7 @@ import google.generativeai as genai
 import numpy as np
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="محرر الدريوش سيتي", layout="wide", page_icon="✅")
+st.set_page_config(page_title="Editor V33.2 - Final", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
@@ -91,7 +91,4 @@ def process_img(src, is_url):
 def ai_gen(txt):
     try:
         genai.configure(api_key=api_key)
-        mod = genai.GenerativeModel('gemini-2.0-flash')
-        
-        pmt = (f"**الدور:** رئيس تحرير محترف ونزيه. "
-               f"
+        mod =
