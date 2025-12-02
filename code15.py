@@ -11,7 +11,7 @@ import google.generativeai as genai
 import numpy as np
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="Editor V28.2 - Final", layout="wide", page_icon="✅")
+st.set_page_config(page_title="محرر الدريوش سيتي - النهائي", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
@@ -78,9 +78,7 @@ def process_img(src, is_url):
         img = ImageEnhance.Sharpness(img).enhance(1.3)
         
         if red_factor > 0:
-            color_tuple = (180, 20, 20)
-            ov = Image.new('RGB', img.size, color_tuple)
-            # تم تقسيم الاستدعاء لضمان عدم حدوث خطأ
+            ov = Image.new('RGB', img.size, (180, 20, 20))
             img = Image.blend(img, ov, alpha=red_factor)
             
         buf = io.BytesIO()
@@ -96,18 +94,4 @@ def ai_gen(txt):
         mod = genai.GenerativeModel('gemini-2.0-flash')
         
         pmt = f"""
-        **الدور:** رئيس تحرير محترف ونزيه.
-        المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang}.
-        القواعد:
-        1. الفاصل: ###SPLIT###
-        2. الهيكل: عنوان، مقدمة، جسم (4 فقرات على الأقل).
-        3. الحجم: حافظ على نفس كمية المعلومات.
-        4. الأسلوب: بشري، خالي من الكليشيهات.
-        النص: {txt[:20000]}
-        """
-        return mod.generate_content(pmt).text
-    except Exception as e: return f"Error: {e}"
-
-def generate_filename():
-    today_str = datetime.datetime.now().strftime("%Y%m%d")
-    random_num = random
+        **الدور:** صحفي محترف ونزيه
