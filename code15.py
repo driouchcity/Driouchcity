@@ -11,7 +11,7 @@ import google.generativeai as genai
 import numpy as np
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="Editor V29.1 - Final", layout="wide", page_icon="✅")
+st.set_page_config(page_title="Editor V30.0 - FINAL", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
@@ -64,91 +64,4 @@ def process_img(src, is_url):
         else:
             img = Image.open(src)
             
-        if img.mode != 'RGB': img = img.convert('RGB')
-        
-        if crop_logo:
-            w, h = img.size
-            img = img.crop((0, 0, w, int(h * (1 - logo_ratio))))
-            
-        if apply_mirror: img = ImageOps.mirror(img)
-        
-        img = resize_768(img)
-        img = ImageEnhance.Color(img).enhance(1.6)
-        img = ImageEnhance.Contrast(img).enhance(1.15)
-        img = ImageEnhance.Sharpness(img).enhance(1.3)
-        
-        if red_factor > 0:
-            ov = Image.new('RGB', img.size, (180, 20, 20))
-            img = Image.blend(img, ov, alpha=red_factor)
-            
-        buf = io.BytesIO()
-        img.save(buf, format='JPEG', quality=95)
-        return buf.getvalue()
-        
-    except Exception as e:
-        return None
-
-def ai_gen(txt):
-    try:
-        genai.configure(api_key=api_key)
-        mod = genai.GenerativeModel('gemini-2.0-flash')
-        
-        # --- تم إصلاح هذا الجزء لضمان عدم حدوث SyntaxError في f-string ---
-        pmt = (f"**الدور:** رئيس تحرير محترف ونزيه. "
-               f"المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang}. "
-               "القواعد: 1. الفاصل: ###SPLIT### 2. الهيكل: عنوان، مقدمة، جسم (4 فقرات على الأقل). "
-               "3. الحجم: حافظ على نفس كمية المعلومات. 4. الأسلوب: بشري، خالي من الكليشيهات."
-               f"النص: {txt[:20000]}")
-        # --- نهاية الإصلاح ---
-
-        return mod.generate_content(pmt).text
-    except Exception as e: return f"Error: {e}"
-
-def generate_filename():
-    today_str = datetime.datetime.now().strftime("%Y%m%d")
-    random_num = random.randint(1000, 9999)
-    return f"driouchcity-{today_str}-{random_num}.jpg"
-
-def wp_send(ib, tit, con):
-    cred = f"{wp_user}:{wp_password}"
-    tok = base64.b64encode(cred.encode()).decode('utf-8')
-    head = {'Authorization': f'Basic {tok}'}
-    
-    mid = 0
-    if ib:
-        filename = generate_filename()
-        h2 = head.copy()
-        h2.update({'Content-Disposition': f'attachment; filename={filename}', 'Content-Type': 'image/jpeg'})
-        try:
-            api_media = f"{wp_url}/wp-json/wp/v2/media"
-            r = requests.post(api_media, headers=h2, data=ib)
-            if r.status_code == 201: mid = r.json()['id']
-        except: pass
-    
-    h3 = head.copy()
-    h3['Content-Type'] = 'application/json'
-    api_posts = f"{wp_url}/wp-json/wp/v2/posts"
-    d = {'title': tit, 'content': con, 'status': 'draft', 'featured_media': mid}
-    
-    return requests.post(api_posts, headers=h3, json=d)
-
-def wp_img_only(ib):
-    cred = f"{wp_user}:{wp_password}"
-    tok = base64.b64encode(cred.encode()).decode('utf-8')
-    head = {'Authorization': f'Basic {tok}'}
-    fn = generate_filename()
-    h2 = head.copy()
-    h2.update({'Content-Disposition': f'attachment; filename={fn}', 'Content-Type': 'image/jpeg'})
-    return requests.post(f"{wp_url}/wp-json/wp/v2/media", headers=h2, data=ib)
-
-# --- 4. الواجهة ---
-st.title("💎 محرر الدريوش سيتي (V29)")
-t1, t2, t3 = st.tabs(["🔗 رابط", "📝 نص", "🖼️ صورة"])
-
-mode, l_val, f_val, t_val, i_only = None, "", None, "", None
-
-with t1:
-    l_val = st.text_input("رابط الخبر")
-    if st.button("🚀 تنفيذ الرابط"): mode = "link"
-with t2:
-    f_val = st.file_uploader("صورة", key="2")
+        if img.mode != '
