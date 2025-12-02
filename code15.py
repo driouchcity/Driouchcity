@@ -11,7 +11,7 @@ import google.generativeai as genai
 import numpy as np
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="Editor V32.0 - Final", layout="wide", page_icon="✅")
+st.set_page_config(page_title="Editor V29.1 - Final", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
@@ -93,9 +93,52 @@ def ai_gen(txt):
         genai.configure(api_key=api_key)
         mod = genai.GenerativeModel('gemini-2.0-flash')
         
-        pmt = f"""
-        **الدور:** صحفي محترف ونزيه. المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang}.
-        القواعد:
-        1. الفاصل: ###SPLIT###
-        2. الهيكل: عنوان، مقدمة، جسم (4 فقرات على الأقل).
-        3.
+        # --- تم إصلاح هذا الجزء لضمان عدم حدوث SyntaxError في f-string ---
+        pmt = (f"**الدور:** رئيس تحرير محترف ونزيه. "
+               f"المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang}. "
+               "القواعد: 1. الفاصل: ###SPLIT### 2. الهيكل: عنوان، مقدمة، جسم (4 فقرات على الأقل). "
+               "3. الحجم: حافظ على نفس كمية المعلومات. 4. الأسلوب: بشري، خالي من الكليشيهات."
+               f"النص: {txt[:20000]}") # هذا هو القوس الذي كان مفتوحاً
+
+        return mod.generate_content(pmt).text
+    except Exception as e: return f"Error: {e}"
+
+def generate_filename():
+    today_str = datetime.datetime.now().strftime("%Y%m%d")
+    random_num = random.randint(1000, 9999)
+    return f"driouchcity-{today_str}-{random_num}.jpg"
+
+def wp_send(ib, tit, con):
+    cred = f"{wp_user}:{wp_password}"
+    tok = base64.b64encode(cred.encode()).decode('utf-8')
+    head = {'Authorization': f'Basic {tok}'}
+    
+    mid = 0
+    if ib:
+        filename = generate_filename()
+        h2 = head.copy()
+        h2.update({'Content-Disposition': f'attachment; filename={filename}', 'Content-Type': 'image/jpeg'})
+        try:
+            api_media = f"{wp_url}/wp-json/wp/v2/media"
+            r = requests.post(api_media, headers=h2, data=ib)
+            if r.status_code == 201: mid = r.json()['id']
+        except: pass
+    
+    h3 = head.copy()
+    h3['Content-Type'] = 'application/json'
+    api_posts = f"{wp_url}/wp-json/wp/v2/posts"
+    d = {'title': tit, 'content': con, 'status': 'draft', 'featured_media': mid}
+    
+    return requests.post(api_posts, headers=h3, json=d)
+
+def wp_img_only(ib):
+    cred = f"{wp_user}:{wp_password}"
+    tok = base64.b64encode(cred.encode()).decode('utf-8')
+    head = {'Authorization': f'Basic {tok}'}
+    fn = generate_filename()
+    h2 = head.copy()
+    h2.update({'Content-Disposition': f'attachment; filename={fn}', 'Content-Type': 'image/jpeg'})
+    return requests.post(f"{wp_url}/wp-json/wp/v2/media", headers=h2, data=ib)
+
+# --- 4. الواجهة ---
+st.title("💎 محرر الدريوش سيتي (V
