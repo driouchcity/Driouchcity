@@ -11,7 +11,7 @@ import google.generativeai as genai
 import numpy as np
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="Editor V36.0 - Final", layout="wide", page_icon="✅")
+st.set_page_config(page_title="Editor V37.0 - Final", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
@@ -35,7 +35,8 @@ with st.sidebar:
 
 def clean_txt(text):
     if not text: return ""
-    junk = ["###SPLIT###", "###", "##", "**", "*", "العنوان:", "المتن:", "نص المقال:"]
+    # إضافة الكلمات التي تظهر في النواتج لحذفها
+    junk = ["###SPLIT###", "###", "##", "**", "*", "العنوان:", "المتن:", "نص المقال:", "عنوان رئيسي", "المقدمة", "جسم المقال", "الخاتمة", "الفقرة"]
     for x in junk:
         text = text.replace(x, "")
     return text.strip()
@@ -93,16 +94,16 @@ def ai_gen(txt):
         genai.configure(api_key=api_key)
         mod = genai.GenerativeModel('gemini-2.0-flash')
         
-        # --- تحديث التعليمات هنا لضمان الحيادية و 5 فقرات ---
+        # --- البرومبت النهائي: إجبار الفصل عبر التسمية ---
         pmt = (
-            f"**الدور:** صحفي استقصائي تقريري مهني وموضوعي. "
-            f"**المهمة:** إعادة صياغة شاملة للنص أدناه للغة {target_lang} مع الالتزام بالحيادية التامة والأسلوب التقريري المهني. "
-            "**القواعد:** 1. الفاصل: ###SPLIT### 2. الهيكل: يجب أن يتضمن المقال: عنوان رئيسي، مقدمة، وجسم المقال (يجب أن يحتوي على 5 فقرات على الأقل). "
-            "3. الأسلوب: محايد، واقعي، وخالٍ من المبالغة. اجعل النص تقريرياً وموضوعياً بشكل صارم. "
-            "4. تجنب: الصفات المبالغ فيها. تجنب اللغة العاطفية، النصائح، وأي خاتمة تفاؤلية أو استشراف إيجابي. ركّز حصراً على الحقائق والوقائع. "
-            f"**النص:** {txt[:20000]}"
+            f"**ROLE:** Senior Journalist. **TASK:** Rewrite and translate the text below into {target_lang}. "
+            "**RULES:** Produce a complete, neutral, objective news report. "
+            "1. **STRUCTURE:** The article MUST be composed of exactly 5 distinct paragraphs (Intro, 3 Body, Conclusion). "
+            "2. **OUTPUT FORMAT:** Strictly use the following labels for separation:\nTITLE_START\n[Your title here]\nBODY_START\n[Your 5 paragraphs here]\n"
+            "3. **STYLE:** Highly objective. Avoid exaggeration, emotion, or advice. Focus only on facts. "
+            f"TEXT: {txt[:20000]}"
         )
-        # --- نهاية التحديث ---
+        # --------------------------------------------------
 
         return mod.generate_content(pmt).text
     except Exception as e: return f"Error: {e}"
@@ -145,7 +146,7 @@ def wp_img_only(ib):
     return requests.post(f"{wp_url}/wp-json/wp/v2/media", headers=h2, data=ib)
 
 # --- 4. الواجهة ---
-st.title("💎 محرر الدريوش سيتي (V28)")
+st.title("💎 محرر الدريوش سيتي (V37)")
 t1, t2, t3 = st.tabs(["🔗 رابط", "📝 نص", "🖼️ صورة"])
 
 mode, l_val, f_val, t_val, i_only = None, "", None, "", None
@@ -192,7 +193,7 @@ if mode:
                             else: st.error(r.text)
                     st.stop() 
 
-                # معالجة الصورة والمقال للمسار link/manual
+                # معالجة المقال
                 fi = None
                 if ti:
                     fi = process_img(ti, iu)
@@ -201,16 +202,26 @@ if mode:
                 rai = ai_gen(tt)
                 if "Error" in rai: st.error(rai)
                 else:
-                    tit, bod = "", ""
-                    if "###SPLIT###" in rai:
-                        p = rai.split("###SPLIT###")
-                        tit, bod = p[0], p[1]
-                    else:
-                        l = rai.split('\n')
-                        tit, bod = l[0], "\n".join(l[1:])
+                    # --- تقسيم جديد يعتمد على الكلمات المفتاحية ---
+                    raw_output = rai
                     
-                    tit = clean_txt(tit)
-                    bod = clean_txt(bod)
+                    if "TITLE_START" in raw_output and "BODY_START" in raw_output:
+                        title_part = raw_output.split("TITLE_START")[1].split("BODY_START")[0].strip()
+                        body_part = raw_output.split("BODY_START")[1].strip()
+                        
+                        # التنظيف النهائي
+                        tit = clean_txt(title_part)
+                        bod = clean_txt(body_part)
+                        
+                        # إضافة فواصل أسطر لضمان ظهور الفقرات الخمسة
+                        # يتم استبدال أي سطر جديد بأخرى مزدوجة للفقرات
+                        bod = bod.replace('\n', '\n\n')
+                        
+                    else:
+                        # Fallback to simple split (if labels failed)
+                        tit = clean_txt(raw_output.split('\n')[0])
+                        bod = clean_txt("\n".join(raw_output.split('\n')[1:]))
+                    # --- نهاية التقسيم ---
 
                     st.success(f"📌 {tit}")
                     st.markdown(bod)
