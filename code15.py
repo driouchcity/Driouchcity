@@ -11,7 +11,7 @@ import google.generativeai as genai
 import numpy as np
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="Editor V39.0 - Final", layout="wide", page_icon="✅")
+st.set_page_config(page_title="Editor V37.0 - Final", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
@@ -34,8 +34,8 @@ with st.sidebar:
 # --- 3. الدوال ---
 
 def clean_txt(text):
-    # إزالة الكلمات التي تظهر في النواتج
     if not text: return ""
+    # إضافة الكلمات التي تظهر في النواتج لحذفها
     junk = ["###SPLIT###", "###", "##", "**", "*", "العنوان:", "المتن:", "نص المقال:", "عنوان رئيسي", "المقدمة", "جسم المقال", "الخاتمة", "الفقرة"]
     for x in junk:
         text = text.replace(x, "")
@@ -61,9 +61,6 @@ def process_img(src, is_url):
     try:
         if is_url:
             r = requests.get(src, stream=True, timeout=10)
-            if r.status_code != 200:
-                print(f"ERROR: Image URL returned status code {r.status_code}")
-                return None
             img = Image.open(r.raw)
         else:
             img = Image.open(src)
@@ -90,7 +87,6 @@ def process_img(src, is_url):
         return buf.getvalue()
         
     except Exception as e:
-        print(f"CRITICAL IMAGE PROCESSING FAIL: {e}")
         return None
 
 def ai_gen(txt):
@@ -98,6 +94,7 @@ def ai_gen(txt):
         genai.configure(api_key=api_key)
         mod = genai.GenerativeModel('gemini-2.0-flash')
         
+        # --- البرومبت النهائي: إجبار الفصل عبر التسمية ---
         pmt = (
             f"**ROLE:** Senior Journalist. **TASK:** Rewrite and translate the text below into {target_lang}. "
             "**RULES:** Produce a complete, neutral, objective news report. "
@@ -106,7 +103,8 @@ def ai_gen(txt):
             "3. **STYLE:** Highly objective. Avoid exaggeration, emotion, or advice. Focus only on facts. "
             f"TEXT: {txt[:20000]}"
         )
-        
+        # --------------------------------------------------
+
         return mod.generate_content(pmt).text
     except Exception as e: return f"Error: {e}"
 
@@ -147,34 +145,15 @@ def wp_img_only(ib):
     h2.update({'Content-Disposition': f'attachment; filename={fn}', 'Content-Type': 'image/jpeg'})
     return requests.post(f"{wp_url}/wp-json/wp/v2/media", headers=h2, data=ib)
 
-# --- دالة مسح الرابط الجديدة ---
-def clear_link_input():
-    # تعيين قيمة حقل الإدخال إلى سلسلة فارغة
-    st.session_state["link_input_key"] = ""
-# -----------------------------
-
 # --- 4. الواجهة ---
-st.title("💎 محرر الدريوش سيتي (V39)")
+st.title("💎 محرر الدريوش سيتي (V37)")
 t1, t2, t3 = st.tabs(["🔗 رابط", "📝 نص", "🖼️ صورة"])
 
 mode, l_val, f_val, t_val, i_only = None, "", None, "", None
 
 with t1:
-    # 🌟 التعديل هنا: إضافة مفتاح Key للسماح بالتحكم في القيمة
-    l_val = st.text_input("رابط الخبر", key="link_input_key")
-    
-    # تقسيم الأزرار في عمودين
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("🚀 تنفيذ الرابط"): 
-            mode = "link"
-    
-    with col2:
-        # 🌟 زر مسح الرابط الجديد
-        if st.button("🗑️ مسح الرابط"): 
-            clear_link_input()
-
+    l_val = st.text_input("رابط الخبر")
+    if st.button("🚀 تنفيذ الرابط"): mode = "link"
 with t2:
     f_val = st.file_uploader("صورة", key="2")
     t_val = st.text_area("نص", height=200)
@@ -218,16 +197,14 @@ if mode:
                 fi = None
                 if ti:
                     fi = process_img(ti, iu)
-                    if fi is None: # التحقق من فشل معالجة الصورة
-                        st.error("❌ فشلت معالجة الصورة (ربما الرابط محظور أو الصيغة غير مدعومة).")
-                        st.stop()
-                    else:
-                        st.image(fi, width=400, caption="الصورة البارزة")
+                    if fi: st.image(fi, width=400)
                 
-                raw_output = ai_gen(tt)
-                if "Error" in raw_output: st.error(raw_output)
+                rai = ai_gen(tt)
+                if "Error" in rai: st.error(rai)
                 else:
                     # --- تقسيم جديد يعتمد على الكلمات المفتاحية ---
+                    raw_output = rai
+                    
                     if "TITLE_START" in raw_output and "BODY_START" in raw_output:
                         title_part = raw_output.split("TITLE_START")[1].split("BODY_START")[0].strip()
                         body_part = raw_output.split("BODY_START")[1].strip()
@@ -237,27 +214,22 @@ if mode:
                         bod = clean_txt(body_part)
                         
                         # إضافة فواصل أسطر لضمان ظهور الفقرات الخمسة
+                        # يتم استبدال أي سطر جديد بأخرى مزدوجة للفقرات
                         bod = bod.replace('\n', '\n\n')
                         
                     else:
-                        # Fallback (قد ينتج نص غير نظيف إذا فشلت التسميات)
-                        l = raw_output.split('\n')
-                        tit = clean_txt(l[0])
-                        bod = clean_txt("\n".join(l[1:]))
+                        # Fallback to simple split (if labels failed)
+                        tit = clean_txt(raw_output.split('\n')[0])
+                        bod = clean_txt("\n".join(raw_output.split('\n')[1:]))
+                    # --- نهاية التقسيم ---
 
                     st.success(f"📌 {tit}")
                     st.markdown(bod)
                     
-                    # رفع المقال
-                    r_final = wp_send(fi, tit, bod)
-                    
-                    if r_final is None:
-                        st.error("❌ فشل الاتصال بخادم ووردبريس أثناء رفع المقال. تحقق من URL.")
-                    elif r_final.status_code == 201: 
+                    r = wp_send(fi, tit, bod)
+                    if r.status_code == 201: 
                         st.balloons()
-                        st.success(f"تم النشر! [رابط المعاينة]({r_final.json()['link']})")
-                    elif r_final.status_code != 201 and r_final.status_code != 404: 
-                        st.error(f"❌ خطأ النشر/الصور: {r_final.text}")
-                    else: st.error(f"خطأ غير معروف: {r_final.status_code}")
+                        st.success(f"تم النشر! [رابط المعاينة]({r.json()['link']})")
+                    else: st.error(r.text)
             except Exception as e:
                 st.error(f"Error: {e}")
