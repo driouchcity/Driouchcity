@@ -11,7 +11,7 @@ import google.generativeai as genai
 import numpy as np
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="Editor V37.0 - Final", layout="wide", page_icon="✅")
+st.set_page_config(page_title="Editor V38.0 - Final Fix", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
@@ -35,8 +35,7 @@ with st.sidebar:
 
 def clean_txt(text):
     if not text: return ""
-    # إضافة الكلمات التي تظهر في النواتج لحذفها
-    junk = ["###SPLIT###", "###", "##", "**", "*", "العنوان:", "المتن:", "نص المقال:", "عنوان رئيسي", "المقدمة", "جسم المقال", "الخاتمة", "الفقرة"]
+    junk = ["###SPLIT###", "###", "##", "**", "*", "العنوان:", "المتن:", "نص المقال:"]
     for x in junk:
         text = text.replace(x, "")
     return text.strip()
@@ -61,6 +60,10 @@ def process_img(src, is_url):
     try:
         if is_url:
             r = requests.get(src, stream=True, timeout=10)
+            # نقطة فحص: هل الرابط يعمل؟
+            if r.status_code != 200:
+                print(f"ERROR: Image URL returned status code {r.status_code}")
+                return None
             img = Image.open(r.raw)
         else:
             img = Image.open(src)
@@ -87,6 +90,7 @@ def process_img(src, is_url):
         return buf.getvalue()
         
     except Exception as e:
+        print(f"CRITICAL IMAGE PROCESSING FAIL: {e}")
         return None
 
 def ai_gen(txt):
@@ -94,16 +98,11 @@ def ai_gen(txt):
         genai.configure(api_key=api_key)
         mod = genai.GenerativeModel('gemini-2.0-flash')
         
-        # --- البرومبت النهائي: إجبار الفصل عبر التسمية ---
-        pmt = (
-            f"**ROLE:** Senior Journalist. **TASK:** Rewrite and translate the text below into {target_lang}. "
-            "**RULES:** Produce a complete, neutral, objective news report. "
-            "1. **STRUCTURE:** The article MUST be composed of exactly 5 distinct paragraphs (Intro, 3 Body, Conclusion). "
-            "2. **OUTPUT FORMAT:** Strictly use the following labels for separation:\nTITLE_START\n[Your title here]\nBODY_START\n[Your 5 paragraphs here]\n"
-            "3. **STYLE:** Highly objective. Avoid exaggeration, emotion, or advice. Focus only on facts. "
-            f"TEXT: {txt[:20000]}"
-        )
-        # --------------------------------------------------
+        pmt = (f"**الدور:** صحفي محترف ونزيه. "
+               f"المهمة: إعادة صياغة شاملة للنص أدناه للغة {target_lang}. "
+               "القواعد: 1. الفاصل: ###SPLIT### 2. الهيكل: عنوان، مقدمة، جسم (4 فقرات على الأقل). "
+               "3. الحجم: حافظ على نفس كمية المعلومات. 4. الأسلوب: بشري، خالي من الكليشيهات."
+               f"النص: {txt[:20000]}")
 
         return mod.generate_content(pmt).text
     except Exception as e: return f"Error: {e}"
@@ -125,10 +124,17 @@ def wp_send(ib, tit, con):
         h2.update({'Content-Disposition': f'attachment; filename={filename}', 'Content-Type': 'image/jpeg'})
         try:
             api_media = f"{wp_url}/wp-json/wp/v2/media"
-            r = requests.post(api_media, headers=h2, data=ib)
-            if r.status_code == 201: mid = r.json()['id']
-        except: pass
-    
+            r_media = requests.post(api_media, headers=h2, data=ib)
+            # نقطة فحص: هل الرفع نجح فعلاً؟
+            if r_media.status_code == 201: 
+                mid = r_media.json()['id']
+            else:
+                # إرجاع خطأ API الصورة ليعرض للمستخدم
+                return r_media 
+        except: 
+            return None # فشل الاتصال
+
+    # رفع المقال
     h3 = head.copy()
     h3['Content-Type'] = 'application/json'
     api_posts = f"{wp_url}/wp-json/wp/v2/posts"
@@ -146,7 +152,7 @@ def wp_img_only(ib):
     return requests.post(f"{wp_url}/wp-json/wp/v2/media", headers=h2, data=ib)
 
 # --- 4. الواجهة ---
-st.title("💎 محرر الدريوش سيتي (V37)")
+st.title("💎 محرر الدريوش سيتي (V38)")
 t1, t2, t3 = st.tabs(["🔗 رابط", "📝 نص", "🖼️ صورة"])
 
 mode, l_val, f_val, t_val, i_only = None, "", None, "", None
@@ -193,43 +199,46 @@ if mode:
                             else: st.error(r.text)
                     st.stop() 
 
-                # معالجة المقال
+                # معالجة الصورة والمقال للمسار link/manual
                 fi = None
                 if ti:
                     fi = process_img(ti, iu)
-                    if fi: st.image(fi, width=400)
+                    # التحقق هنا: إذا فشلت المعالجة، نوقف العملية ونعرض رسالة
+                    if fi is None:
+                        st.error("❌ فشلت معالجة الصورة (ربما الرابط محظور أو الصيغة غير مدعومة).")
+                        st.stop()
+                    else:
+                        st.image(fi, width=400, caption="تمت معالجة الصورة")
                 
+                # النص
                 rai = ai_gen(tt)
                 if "Error" in rai: st.error(rai)
                 else:
-                    # --- تقسيم جديد يعتمد على الكلمات المفتاحية ---
-                    raw_output = rai
-                    
-                    if "TITLE_START" in raw_output and "BODY_START" in raw_output:
-                        title_part = raw_output.split("TITLE_START")[1].split("BODY_START")[0].strip()
-                        body_part = raw_output.split("BODY_START")[1].strip()
-                        
-                        # التنظيف النهائي
-                        tit = clean_txt(title_part)
-                        bod = clean_txt(body_part)
-                        
-                        # إضافة فواصل أسطر لضمان ظهور الفقرات الخمسة
-                        # يتم استبدال أي سطر جديد بأخرى مزدوجة للفقرات
-                        bod = bod.replace('\n', '\n\n')
-                        
+                    tit, bod = "", ""
+                    if "###SPLIT###" in rai:
+                        p = rai.split("###SPLIT###")
+                        tit, bod = p[0], p[1]
                     else:
-                        # Fallback to simple split (if labels failed)
-                        tit = clean_txt(raw_output.split('\n')[0])
-                        bod = clean_txt("\n".join(raw_output.split('\n')[1:]))
-                    # --- نهاية التقسيم ---
+                        l = rai.split('\n')
+                        tit, bod = l[0], "\n".join(l[1:])
+                    
+                    tit = clean_txt(tit)
+                    bod = clean_txt(bod)
 
                     st.success(f"📌 {tit}")
                     st.markdown(bod)
                     
-                    r = wp_send(fi, tit, bod)
-                    if r.status_code == 201: 
+                    # رفع المقال
+                    r_final = wp_send(fi, tit, bod)
+                    
+                    if r_final is None:
+                        st.error("❌ فشل الاتصال بخادم ووردبريس أثناء رفع المقال. تحقق من URL.")
+                    elif r_final.status_code == 201: 
                         st.balloons()
-                        st.success(f"تم النشر! [رابط المعاينة]({r.json()['link']})")
-                    else: st.error(r.text)
+                        st.success(f"تم النشر! [رابط المعاينة]({r_final.json()['link']})")
+                    # التحقق من حالة فشل رفع الصورة (التي تم إرجاعها من wp_send)
+                    elif r_final.status_code != 201 and r_final.status_code != 404: 
+                        st.error(f"❌ خطأ النشر/الصور: {r_final.text}")
+                    else: st.error(f"خطأ غير معروف: {r_final.status_code}")
             except Exception as e:
                 st.error(f"Error: {e}")
