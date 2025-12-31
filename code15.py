@@ -7,16 +7,17 @@ import random
 import datetime
 from PIL import Image, ImageEnhance, ImageOps
 from newspaper import Article
-import google.generativeai as genai
+from openai import OpenAI  # تم التغيير هنا
 import numpy as np
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="Editor V37.0 - Final", layout="wide", page_icon="✅")
+st.set_page_config(page_title="Editor V37.0 - OpenAI", layout="wide", page_icon="✅")
 
 # --- 2. القائمة الجانبية ---
 with st.sidebar:
     st.header("⚙️ الإعدادات")
-    api_key = st.text_input("مفتاح Gemini API", type="password")
+    # تغيير المسمى ليصبح OpenAI API Key
+    api_key = st.text_input("مفتاح OpenAI API", type="password") 
     wp_url = st.text_input("رابط الموقع", "https://driouchcity.com")
     wp_user = st.text_input("اسم المستخدم")
     wp_password = st.text_input("كلمة المرور", type="password")
@@ -33,9 +34,9 @@ with st.sidebar:
 
 # --- 3. الدوال ---
 
+# [دوال clean_txt و resize_768 و process_img و generate_filename تبقى كما هي بدون تغيير]
 def clean_txt(text):
     if not text: return ""
-    # إضافة الكلمات التي تظهر في النواتج لحذفها
     junk = ["###SPLIT###", "###", "##", "**", "*", "العنوان:", "المتن:", "نص المقال:", "عنوان رئيسي", "المقدمة", "جسم المقال", "الخاتمة", "الفقرة"]
     for x in junk:
         text = text.replace(x, "")
@@ -64,37 +65,30 @@ def process_img(src, is_url):
             img = Image.open(r.raw)
         else:
             img = Image.open(src)
-            
         if img.mode != 'RGB': img = img.convert('RGB')
-        
         if crop_logo:
             w, h = img.size
             img = img.crop((0, 0, w, int(h * (1 - logo_ratio))))
-            
         if apply_mirror: img = ImageOps.mirror(img)
-        
         img = resize_768(img)
         img = ImageEnhance.Color(img).enhance(1.6)
         img = ImageEnhance.Contrast(img).enhance(1.15)
         img = ImageEnhance.Sharpness(img).enhance(1.3)
-        
         if red_factor > 0:
             ov = Image.new('RGB', img.size, (180, 20, 20))
             img = Image.blend(img, ov, alpha=red_factor)
-            
         buf = io.BytesIO()
         img.save(buf, format='JPEG', quality=95)
         return buf.getvalue()
-        
     except Exception as e:
         return None
 
+# --- الدالة المحدثة لـ OpenAI ---
 def ai_gen(txt):
     try:
-        genai.configure(api_key=api_key)
-        mod = genai.GenerativeModel('gemini-2.0-flash')
+        # إعداد عميل OpenAI
+        client = OpenAI(api_key=api_key)
         
-        # --- البرومبت النهائي: إجبار الفصل عبر التسمية ---
         pmt = (
             f"**ROLE:** Senior Journalist. **TASK:** Rewrite and translate the text below into {target_lang}. "
             "**RULES:** Produce a complete, neutral, objective news report. "
@@ -103,11 +97,22 @@ def ai_gen(txt):
             "3. **STYLE:** Highly objective. Avoid exaggeration, emotion, or advice. Focus only on facts. "
             f"TEXT: {txt[:20000]}"
         )
-        # --------------------------------------------------
 
-        return mod.generate_content(pmt).text
-    except Exception as e: return f"Error: {e}"
+        # استدعاء نموذج GPT-4o (يمكنك تغييره لـ gpt-3.5-turbo)
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a professional news editor."},
+                {"role": "user", "content": pmt}
+            ],
+            temperature=0.7
+        )
+        
+        return response.choices[0].message.content
+    except Exception as e: 
+        return f"Error: {e}"
 
+# [بقية الدوال wp_send و wp_img_only والواجهة تبقى كما هي]
 def generate_filename():
     today_str = datetime.datetime.now().strftime("%Y%m%d")
     random_num = random.randint(1000, 9999)
@@ -117,7 +122,6 @@ def wp_send(ib, tit, con):
     cred = f"{wp_user}:{wp_password}"
     tok = base64.b64encode(cred.encode()).decode('utf-8')
     head = {'Authorization': f'Basic {tok}'}
-    
     mid = 0
     if ib:
         filename = generate_filename()
@@ -128,12 +132,10 @@ def wp_send(ib, tit, con):
             r = requests.post(api_media, headers=h2, data=ib)
             if r.status_code == 201: mid = r.json()['id']
         except: pass
-    
     h3 = head.copy()
     h3['Content-Type'] = 'application/json'
     api_posts = f"{wp_url}/wp-json/wp/v2/posts"
     d = {'title': tit, 'content': con, 'status': 'draft', 'featured_media': mid}
-    
     return requests.post(api_posts, headers=h3, json=d)
 
 def wp_img_only(ib):
@@ -146,7 +148,7 @@ def wp_img_only(ib):
     return requests.post(f"{wp_url}/wp-json/wp/v2/media", headers=h2, data=ib)
 
 # --- 4. الواجهة ---
-st.title("💎 محرر الدريوش سيتي (V37)")
+st.title("💎 محرر الدريوش سيتي (V37 - OpenAI)")
 t1, t2, t3 = st.tabs(["🔗 رابط", "📝 نص", "🖼️ صورة"])
 
 mode, l_val, f_val, t_val, i_only = None, "", None, "", None
@@ -180,7 +182,6 @@ if mode:
                 elif mode == "manual":
                     tt, ti = t_val, f_val
                 
-                # مسار الصورة فقط
                 if mode == "img":
                     if not i_only: st.error("لا توجد صورة")
                     else:
@@ -193,7 +194,6 @@ if mode:
                             else: st.error(r.text)
                     st.stop() 
 
-                # معالجة المقال
                 fi = None
                 if ti:
                     fi = process_img(ti, iu)
@@ -202,26 +202,16 @@ if mode:
                 rai = ai_gen(tt)
                 if "Error" in rai: st.error(rai)
                 else:
-                    # --- تقسيم جديد يعتمد على الكلمات المفتاحية ---
                     raw_output = rai
-                    
                     if "TITLE_START" in raw_output and "BODY_START" in raw_output:
                         title_part = raw_output.split("TITLE_START")[1].split("BODY_START")[0].strip()
                         body_part = raw_output.split("BODY_START")[1].strip()
-                        
-                        # التنظيف النهائي
                         tit = clean_txt(title_part)
                         bod = clean_txt(body_part)
-                        
-                        # إضافة فواصل أسطر لضمان ظهور الفقرات الخمسة
-                        # يتم استبدال أي سطر جديد بأخرى مزدوجة للفقرات
                         bod = bod.replace('\n', '\n\n')
-                        
                     else:
-                        # Fallback to simple split (if labels failed)
                         tit = clean_txt(raw_output.split('\n')[0])
                         bod = clean_txt("\n".join(raw_output.split('\n')[1:]))
-                    # --- نهاية التقسيم ---
 
                     st.success(f"📌 {tit}")
                     st.markdown(bod)
