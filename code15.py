@@ -7,17 +7,17 @@ import random
 import datetime
 from PIL import Image, ImageEnhance, ImageOps
 from newspaper import Article
-from openai import OpenAI  # نستخدم مكتبة OpenAI للاتصال بـ Groq
+from openai import OpenAI  
 import numpy as np
 
 # =========================================================
-# 1. ضع مفتاح GROQ المجاني الخاص بك هنا (الذي يبدأ بـ gsk_)
+# 1. مفتاح GROQ المجاني - تم وضعه بنجاح
 # =========================================================
 GROQ_API_KEY = "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" 
 # =========================================================
 
 # --- إعدادات الصفحة ---
-st.set_page_config(page_title="محرر الدريوش سيتي - Groq", layout="wide", page_icon="✅")
+st.set_page_config(page_title="محرر الدريوش سيتي - Groq Edition", layout="wide", page_icon="✅")
 
 # --- القائمة الجانبية ---
 with st.sidebar:
@@ -73,18 +73,4 @@ def process_img(src, is_url):
             img = img.crop((0, 0, w, int(h * (1 - logo_ratio))))
         if apply_mirror: img = ImageOps.mirror(img)
         img = resize_768(img)
-        img = ImageEnhance.Color(img).enhance(1.6)
-        img = ImageEnhance.Contrast(img).enhance(1.15)
-        img = ImageEnhance.Sharpness(img).enhance(1.3)
-        if red_factor > 0:
-            ov = Image.new('RGB', img.size, (180, 20, 20))
-            img = Image.blend(img, ov, alpha=red_factor)
-        buf = io.BytesIO()
-        img.save(buf, format='JPEG', quality=95)
-        return buf.getvalue()
-    except Exception: return None
-
-# --- الدالة الأساسية (معدلة للربط بـ Groq) ---
-def ai_gen(txt):
-    try:
-        #
+        img =
