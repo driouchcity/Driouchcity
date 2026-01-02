@@ -8,10 +8,10 @@ WP_URL = "https://driouchcity.com/wp-json/wp/v2"
 WP_USER = "ADMIN"
 
 # استدعاء كلمة المرور من Secrets لضمان الأمان
-try:
+if "WP_PASSWORD" in st.secrets:
     WP_APP_PASSWORD = st.secrets["WP_PASSWORD"]
-except KeyError:
-    st.error("خطأ: لم يتم ضبط كلمة المرور في إعدادات Secrets.")
+else:
+    st.error("خطأ: لم يتم ضبط WP_PASSWORD في إعدادات Secrets.")
     st.stop()
 
 def upload_to_wordpress(img, title, content):
@@ -20,11 +20,11 @@ def upload_to_wordpress(img, title, content):
     img_bytes = buf.getvalue()
 
     headers = {
-        "Content-Disposition": "attachment; filename=image.png",
+        "Content-Disposition": "attachment; filename=news_image.png",
         "Content-Type": "image/png"
     }
     
-    # رفع الصورة
+    # 1. رفع الصورة
     media_res = requests.post(
         f"{WP_URL}/media",
         headers=headers,
@@ -34,7 +34,7 @@ def upload_to_wordpress(img, title, content):
     
     if media_res.status_code == 201:
         media_id = media_res.json()['id']
-        # إنشاء المقال
+        # 2. إنشاء المقال
         post_data = {
             "title": title,
             "content": content,
@@ -45,49 +45,61 @@ def upload_to_wordpress(img, title, content):
         return post_res.status_code == 201
     return False
 
-# --- الواجهة ---
+# --- الواجهة الخاصة بالتطبيق ---
 st.set_page_config(page_title="محرر الدريوش سيتي", layout="centered")
-st.title("🗞️ محرر ونشر الأخبار - DriouchCity")
+st.title("🎨 محرر ونشر الصور - DriouchCity")
 
-source = st.radio("مصدر الصورة:", ("رفع من الجهاز", "رابط URL"))
-image = None
+source = st.radio("اختر مصدر الصورة:", ("رفع من الجهاز", "رابط URL"))
+input_image = None
 
 if source == "رفع من الجهاز":
-    file = st.file_uploader("اختر صورة", type=["jpg", "png", "jpeg"])
-    if file: image = Image.open(file)
+    file = st.file_uploader("اختر صورة...", type=["jpg", "png", "jpeg"])
+    if file:
+        input_image = Image.open(file)
 else:
-    url = st.text_input("ضع الرابط:")
+    url = st.text_input("أدخل رابط الصورة:")
     if url:
         try:
             res = requests.get(url)
-            image = Image.open(BytesIO(res.content))
-        except: st.error("فشل جلب الصورة")
+            input_image = Image.open(BytesIO(res.content))
+        except:
+            st.error("فشل في جلب الصورة من الرابط")
 
-if image:
+if input_image:
     st.divider()
     col1, col2 = st.columns(2)
-    with col1:
-        sat = st.slider("الإشباع", 0.0, 2.0, 1.0)
-        bright = st.slider("الإضاءة", 0.0, 2.0, 1.0)
-    with col2:
-        if st.button("قلب الصورة ↔️"): image = ImageOps.mirror(image)
-        crop = st.checkbox("قص تلقائي")
-
-    image = ImageEnhance.Color(image).enhance(sat)
-    image = ImageEnhance.Brightness(image).enhance(bright)
-    if crop:
-        w, h = image.size
-        image = image.crop((w*0.1, h*0.1, w*0.9, h*0.9))
     
-    # السطر الذي تسبب في الخطأ تم تصحيحه هنا
-    st.image(image, caption="المعاينة النهائية", use_container_width=True)
+    with col1:
+        sat = st.slider("إشباع الألوان", 0.0, 2.0, 1.0)
+        bright = st.slider("السطوع", 0.0, 2.0, 1.0)
+    
+    with col2:
+        flip = st.checkbox("قلب الصورة ↔️")
+        crop = st.checkbox("قص الحواف (10%)")
 
-    title = st.text_input("عنوان الخبر")
-    content = st.text_area("نص الخبر")
+    # تطبيق التعديلات
+    processed_img = ImageEnhance.Color(input_image).enhance(sat)
+    processed_img = ImageEnhance.Brightness(processed_img).enhance(bright)
+    
+    if flip:
+        processed_img = ImageOps.mirror(processed_img)
+    
+    if crop:
+        w, h = processed_img.size
+        processed_img = processed_img.crop((w*0.1, h*0.1, w*0.9, h*0.9))
 
-    if st.button("🚀 انشر الآن"):
-        if title and content:
-            with st.spinner("جاري النشر..."):
-                if upload_to_wordpress(image, title, content):
-                    st.success("تم النشر بنجاح!")
-                else: st.error("فشل النشر")
+    st.image(processed_img, caption="المعاينة قبل النشر", use_container_width=True)
+
+    st.divider()
+    post_title = st.text_input("عنوان الخبر")
+    post_content = st.text_area("نص الخبر")
+
+    if st.button("🚀 انشر الآن على الموقع"):
+        if post_title and post_content:
+            with st.spinner("جاري الرفع والنشر..."):
+                if upload_to_wordpress(processed_img, post_title, post_content):
+                    st.success("🎉 تم النشر بنجاح على DriouchCity.com")
+                else:
+                    st.error("فشل النشر. تأكد من إعدادات الـ Secrets.")
+        else:
+            st.warning("يرجى ملء العنوان والنص")
