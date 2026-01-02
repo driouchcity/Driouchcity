@@ -1,76 +1,93 @@
 import streamlit as st
-import requests
-import base64
-import io
-import time
-import random
-import datetime
 from PIL import Image, ImageEnhance, ImageOps
-from newspaper import Article
-from openai import OpenAI  
-import numpy as np
+import requests
+from io import BytesIO
 
-# =========================================================
-# 1. مفتاح GROQ المجاني - تم وضعه بنجاح
-# =========================================================
-GROQ_API_KEY = "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" 
-# =========================================================
+# --- إعدادات ووردبريس ---
+WP_URL = "https://driouchcity.com/wp-json/wp/v2"
+WP_USER = "ADMIN"
 
-# --- إعدادات الصفحة ---
-st.set_page_config(page_title="محرر الدريوش سيتي - Groq Edition", layout="wide", page_icon="✅")
+# استدعاء كلمة المرور من Secrets لضمان الأمان
+try:
+    WP_APP_PASSWORD = st.secrets["WP_PASSWORD"]
+except KeyError:
+    st.error("خطأ: لم يتم ضبط كلمة المرور في إعدادات Secrets.")
+    st.stop()
 
-# --- القائمة الجانبية ---
-with st.sidebar:
-    st.header("⚙️ الإعدادات")
-    wp_url = st.text_input("رابط الموقع", "https://driouchcity.com")
-    wp_user = st.text_input("اسم المستخدم")
-    wp_password = st.text_input("كلمة المرور", type="password")
+def upload_to_wordpress(img, title, content):
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    img_bytes = buf.getvalue()
+
+    headers = {
+        "Content-Disposition": "attachment; filename=image.png",
+        "Content-Type": "image/png"
+    }
     
-    st.divider()
-    langs = ["العربية", "الإسبانية", "الفرنسية", "الإنجليزية", "الهولندية", "الألمانية", "الإيطالية"]
-    target_lang = st.selectbox("اللغة:", langs)
+    # رفع الصورة
+    media_res = requests.post(
+        f"{WP_URL}/media",
+        headers=headers,
+        auth=(WP_USER, WP_APP_PASSWORD),
+        data=img_bytes
+    )
     
+    if media_res.status_code == 201:
+        media_id = media_res.json()['id']
+        # إنشاء المقال
+        post_data = {
+            "title": title,
+            "content": content,
+            "featured_media": media_id,
+            "status": "publish"
+        }
+        post_res = requests.post(f"{WP_URL}/posts", auth=(WP_USER, WP_APP_PASSWORD), json=post_data)
+        return post_res.status_code == 201
+    return False
+
+# --- الواجهة ---
+st.set_page_config(page_title="محرر الدريوش سيتي", layout="centered")
+st.title("🗞️ محرر ونشر الأخبار - DriouchCity")
+
+source = st.radio("مصدر الصورة:", ("رفع من الجهاز", "رابط URL"))
+image = None
+
+if source == "رفع من الجهاز":
+    file = st.file_uploader("اختر صورة", type=["jpg", "png", "jpeg"])
+    if file: image = Image.open(file)
+else:
+    url = st.text_input("ضع الرابط:")
+    if url:
+        try:
+            res = requests.get(url)
+            image = Image.open(BytesIO(res.content))
+        except: st.error("فشل جلب الصورة")
+
+if image:
     st.divider()
-    crop_logo = st.checkbox("قص اللوغو", value=True)
-    logo_ratio = st.slider("نسبة القص", 0.0, 0.25, 0.12)
-    apply_mirror = st.checkbox("قلب الصورة", value=True)
-    red_factor = st.slider("لمسة الأحمر", 0.0, 0.3, 0.08)
+    col1, col2 = st.columns(2)
+    with col1:
+        sat = st.slider("الإشباع", 0.0, 2.0, 1.0)
+        bright = st.slider("الإضاءة", 0.0, 2.0, 1.0)
+    with col2:
+        if st.button("قلب الصورة ↔️"): image = ImageOps.mirror(image)
+        crop = st.checkbox("قص تلقائي")
 
-# --- الدوال المساعدة ---
-def clean_txt(text):
-    if not text: return ""
-    junk = ["###SPLIT###", "###", "##", "**", "*", "العنوان:", "المتن:", "نص المقال:", "عنوان رئيسي", "المقدمة", "جسم المقال", "الخاتمة", "الفقرة"]
-    for x in junk:
-        text = text.replace(x, "")
-    return text.strip()
+    image = ImageEnhance.Color(image).enhance(sat)
+    image = ImageEnhance.Brightness(image).enhance(bright)
+    if crop:
+        w, h = image.size
+        image = image.crop((w*0.1, h*0.1, w*0.9, h*0.9))
+    
+    # السطر الذي تسبب في الخطأ تم تصحيحه هنا
+    st.image(image, caption="المعاينة النهائية", use_container_width=True)
 
-def resize_768(img):
-    tw, th = 768, 432
-    cw, ch = img.size
-    tr, cr = tw / th, cw / ch
-    if cr > tr:
-        nh, nw = th, int(th * cr)
-        img = img.resize((nw, nh), Image.LANCZOS)
-        left = (nw - tw) // 2
-        img = img.crop((left, 0, left + tw, th))
-    else:
-        nw, nh = tw, int(nw / cr)
-        img = img.resize((nw, nh), Image.LANCZOS)
-        top = (nh - th) // 2
-        img = img.crop((0, top, tw, top + th))
-    return img
+    title = st.text_input("عنوان الخبر")
+    content = st.text_area("نص الخبر")
 
-def process_img(src, is_url):
-    try:
-        if is_url:
-            r = requests.get(src, stream=True, timeout=10)
-            img = Image.open(r.raw)
-        else:
-            img = Image.open(src)
-        if img.mode != 'RGB': img = img.convert('RGB')
-        if crop_logo:
-            w, h = img.size
-            img = img.crop((0, 0, w, int(h * (1 - logo_ratio))))
-        if apply_mirror: img = ImageOps.mirror(img)
-        img = resize_768(img)
-        img =
+    if st.button("🚀 انشر الآن"):
+        if title and content:
+            with st.spinner("جاري النشر..."):
+                if upload_to_wordpress(image, title, content):
+                    st.success("تم النشر بنجاح!")
+                else: st.error("فشل النشر")
