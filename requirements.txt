@@ -1,7 +1,3 @@
-openai
 streamlit
-requests
 Pillow
-newspaper3k
-numpy
-lxml_html_clean
+requests
